@@ -1,6 +1,6 @@
 export const colors = {
-  background: '#FFFFFF',
-  text: '#111111',
+  background: '#F0F0F0',
+  text: '#000000',
   mutedText: '#6B7280',
 
   tileBorder: '#D3D6DA',
@@ -10,6 +10,6 @@ export const colors = {
   present: '#C9B458',
   absent: '#787C7E',
 
-  button: '#111111',
+  button: '#000000',
   buttonText: '#FFFFFF'
 } as const;

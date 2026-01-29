@@ -1,14 +1,24 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 
+const PLAY_COUNT_KEY = '@wordle/playCount';
+
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
 export function ResultScreen({ navigation, route }: Props) {
   const { outcome, guessesUsed } = route.params;
+
+  useEffect(() => {
+    AsyncStorage.getItem(PLAY_COUNT_KEY).then((raw) => {
+      const next = (parseInt(raw ?? '0', 10) || 0) + 1;
+      AsyncStorage.setItem(PLAY_COUNT_KEY, String(next));
+    });
+  }, []);
 
   const title = useMemo(() => {
     if (outcome === 'win') return 'Congratulations!';
