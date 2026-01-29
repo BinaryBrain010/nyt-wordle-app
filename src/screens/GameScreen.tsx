@@ -1,6 +1,8 @@
+import * as Haptics from 'expo-haptics';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -45,6 +47,8 @@ export function GameScreen({ navigation }: Props) {
   const [guesses, setGuesses] = useState<string[]>([]);
   const [current, setCurrent] = useState('');
   const [showInstructions, setShowInstructions] = useState(false);
+  const [showLoseOverlay, setShowLoseOverlay] = useState(false);
+  const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const paddingH = Math.max(16, Math.min(24, width * 0.05));
   const tileSize = Math.min(
@@ -142,12 +146,18 @@ export function GameScreen({ navigation }: Props) {
 
         const won = current.toUpperCase() === solution.toUpperCase();
         if (won) {
-          navigation.replace('Result', { outcome: 'win', guessesUsed: nextGuesses.length });
+          navigation.replace('Result', {
+            outcome: 'win',
+            guessesUsed: nextGuesses.length,
+            guesses: nextGuesses,
+            solution
+          });
           return;
         }
 
         if (nextGuesses.length >= MAX_GUESSES) {
-          navigation.replace('Result', { outcome: 'lose', guessesUsed: MAX_GUESSES });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setShowLoseOverlay(true);
           return;
         }
 
@@ -191,6 +201,33 @@ export function GameScreen({ navigation }: Props) {
 
   const keyFontSize = useMemo(() => (width < 360 ? 11 : width < 400 ? 12 : 13), [width]);
 
+  useEffect(() => {
+    if (!showLoseOverlay) return;
+    const seq = Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 1, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 2, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 3, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 4, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true })
+    ]);
+    shakeAnim.setValue(0);
+    seq.start();
+    const t = setTimeout(() => {
+      navigation.replace('Result', {
+        outcome: 'lose',
+        guessesUsed: MAX_GUESSES,
+        guesses,
+        solution
+      });
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [showLoseOverlay, navigation, shakeAnim, guesses, solution]);
+
+  const shakeX = shakeAnim.interpolate({
+    inputRange: [0, 1, 2, 3, 4],
+    outputRange: [0, -10, 10, -10, 0]
+  });
+
   const submitGuess = useCallback(() => {
     if (current.length !== WORD_LENGTH) return;
     onKeyPress('ENTER');
@@ -198,7 +235,22 @@ export function GameScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 8, paddingHorizontal: Math.max(insets.left, 12), paddingBottom: 12 }]}>
+      {showLoseOverlay && (
+        <View style={[styles.loseOverlay, { paddingTop: insets.top + 10 }]} pointerEvents="none">
+          <Text style={styles.loseOverlayText}>Oops! Out of guesses</Text>
+        </View>
+      )}
+      <Animated.View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + 10,
+            paddingBottom: 10,
+            paddingHorizontal: Math.max(insets.left, 10),
+            transform: showLoseOverlay ? [{ translateX: shakeX }] : []
+          }
+        ]}
+      >
         <Pressable
           onPress={() => navigation.navigate('Home')}
           style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
@@ -218,9 +270,18 @@ export function GameScreen({ navigation }: Props) {
         >
           <Text style={styles.headerIcon}>?</Text>
         </Pressable>
-      </View>
+      </Animated.View>
 
-      <View style={[styles.content, { paddingHorizontal: paddingH, paddingBottom: insets.bottom + 16 }]}>
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            paddingHorizontal: paddingH,
+            paddingBottom: insets.bottom + 16,
+            transform: showLoseOverlay ? [{ translateX: shakeX }] : []
+          }
+        ]}
+      >
       <View style={styles.grid}>
         {allRows.map((row: string, r: number) => {
           const rowLetters = row.padEnd(WORD_LENGTH, ' ').slice(0, WORD_LENGTH).split('');
@@ -301,7 +362,7 @@ export function GameScreen({ navigation }: Props) {
       >
         <Text style={styles.submitButtonText}>SUBMIT WORD</Text>
       </Pressable>
-      </View>
+      </Animated.View>
 
       <Modal
         visible={showInstructions}
@@ -371,6 +432,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
+  },
+  loseOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10
+  },
+  loseOverlayText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.absent,
+    textAlign: 'center'
   },
   header: {
     flexDirection: 'row',

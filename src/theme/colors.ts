@@ -10,6 +10,7 @@ export const colors = {
   correct: '#6AAA64',
   present: '#E8A317',
   absent: '#121213',
+  loseCross: '#DC2626',
 
   button: '#000000',
   buttonText: '#FFFFFF',

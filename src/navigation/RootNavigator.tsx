@@ -1,6 +1,7 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 
+import { SafeAreaHeader } from '../components/SafeAreaHeader';
 import { FinishedPuzzleScreen } from '../screens/FinishedPuzzleScreen';
 import { GameScreen } from '../screens/GameScreen';
 import { GamesScreen } from '../screens/GamesScreen';
@@ -11,8 +12,19 @@ import { colors } from '../theme/colors';
 export type RootStackParamList = {
   Home: undefined;
   Game: undefined;
-  Result: { outcome: 'win' | 'lose'; guessesUsed: number };
-  FinishedPuzzle: { outcome: 'win' | 'lose'; guessesUsed: number };
+  Result: {
+    outcome: 'win' | 'lose';
+    guessesUsed: number;
+    guesses?: string[];
+    solution?: string;
+    fromFinishedPuzzle?: boolean;
+  };
+  FinishedPuzzle: {
+    outcome: 'win' | 'lose';
+    guessesUsed: number;
+    guesses?: string[];
+    solution?: string;
+  };
   Games: undefined;
 };
 
@@ -36,14 +48,24 @@ export function RootNavigator() {
       <Stack.Screen
         name="Result"
         component={ResultScreen}
-        options={{ title: '', headerBackTitleVisible: false, gestureEnabled: false }}
+        options={{ headerShown: false, gestureEnabled: false }}
       />
       <Stack.Screen
         name="FinishedPuzzle"
         component={FinishedPuzzleScreen}
-        options={{ title: '', headerBackTitleVisible: false }}
+        options={{
+          headerShown: true,
+          header: () => <SafeAreaHeader title="" showBack />
+        }}
       />
-      <Stack.Screen name="Games" component={GamesScreen} options={{ title: 'Games' }} />
+      <Stack.Screen
+        name="Games"
+        component={GamesScreen}
+        options={{
+          headerShown: true,
+          header: () => <SafeAreaHeader title="Games" showBack />
+        }}
+      />
     </Stack.Navigator>
   );
 }

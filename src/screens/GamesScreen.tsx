@@ -1,12 +1,18 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../theme/colors';
 
 export function GamesScreen() {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const paddingH = Math.max(18, Math.min(24, width * 0.05));
+  const paddingBottom = insets.bottom + 24;
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Games</Text>
+    <View style={[styles.container, { paddingHorizontal: paddingH, paddingBottom }]}>
+      <Text style={[styles.title, { fontSize: width < 360 ? 20 : 22 }]}>Games</Text>
       <View style={styles.tilesRow}>
         <View style={styles.gameTile}>
           <View style={styles.icon} />
@@ -27,8 +33,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: 18,
-    paddingTop: 18
+    paddingTop: 20
   },
   title: {
     fontSize: 22,
