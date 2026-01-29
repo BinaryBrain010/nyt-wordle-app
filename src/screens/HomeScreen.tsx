@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
@@ -20,22 +20,36 @@ function WordleIcon() {
     [colors.tileEmpty, colors.tileEmpty, colors.tileEmpty]
   ];
   return (
-    <View style={iconStyles.container}>
-      {grid.map((row, r) => (
-        <View key={r} style={iconStyles.row}>
-          {row.map((bg, c) => (
-            <View key={c} style={[iconStyles.cell, { backgroundColor: bg, borderColor: bg === colors.tileEmpty ? colors.tileBorder : bg }]} />
-          ))}
-        </View>
-      ))}
+    <View style={iconStyles.wrapper}>
+      <View style={iconStyles.container}>
+        {grid.map((row, r) => (
+          <View key={r} style={iconStyles.row}>
+            {row.map((bg, c) => (
+              <View key={c} style={[iconStyles.cell, { backgroundColor: bg, borderColor: bg === colors.tileEmpty ? colors.tileBorder : bg }]} />
+            ))}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
 const iconStyles = StyleSheet.create({
-  container: { marginBottom: 16 },
+  wrapper: {
+    marginBottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8
+      },
+      android: { elevation: 3 }
+    })
+  },
+  container: { marginBottom: 0 },
   row: { flexDirection: 'row' },
-  cell: { width: 18, height: 18, margin: 1.5, borderWidth: 2, borderRadius: 2 }
+  cell: { width: 22, height: 22, margin: 2, borderWidth: 2, borderRadius: 3 }
 });
 
 export function HomeScreen({ navigation }: Props) {
@@ -61,17 +75,23 @@ export function HomeScreen({ navigation }: Props) {
     <View style={styles.container}>
       <View style={styles.center}>
         <WordleIcon />
-        <Text style={styles.title}>Wordle</Text>
+        <View style={styles.accentLine} />
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Wordle</Text>
+        </View>
         <Text style={styles.subtitle}>Get 6 chances to guess a 5-letter word.</Text>
 
-        <Pressable style={styles.playButton} onPress={() => navigation.navigate('Game')}>
+        <Pressable
+          style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
+          onPress={() => navigation.navigate('Game')}
+        >
           <Text style={styles.playButtonText}>Play</Text>
         </Pressable>
 
         <View style={styles.meta}>
           <Text style={styles.metaPrimary}>{displayDate}</Text>
-          <Text style={styles.metaSecondary}>{puzzleNumStr}</Text>
-          <Text style={styles.metaSecondary}>Edited by pg</Text>
+          <Text style={styles.metaNumber}>{puzzleNumStr}</Text>
+          <Text style={styles.metaEditor}>Edited by pg</Text>
         </View>
 
         <Pressable style={styles.gamesLink} onPress={() => navigation.navigate('Games')}>
@@ -86,7 +106,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     paddingTop: 64,
     paddingBottom: 32
   },
@@ -95,50 +115,94 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
+  accentLine: {
+    width: 32,
+    height: 3,
+    backgroundColor: colors.correct,
+    borderRadius: 2,
+    marginBottom: 16,
+    opacity: 0.9
+  },
+  titleRow: {
+    marginBottom: 10
+  },
   title: {
-    fontSize: 42,
-    fontWeight: '700',
+    fontSize: 52,
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 8
+    letterSpacing: -1.2,
+    ...(Platform.OS === 'ios' && { fontVariant: ['tabular-nums'] })
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
+    lineHeight: 26,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 18
+    marginBottom: 28,
+    letterSpacing: 0.2,
+    opacity: 0.92,
+    maxWidth: 280
   },
   playButton: {
     backgroundColor: colors.button,
-    paddingHorizontal: 34,
-    paddingVertical: 12,
+    paddingHorizontal: 44,
+    paddingVertical: 16,
     borderRadius: 999,
-    marginBottom: 18
+    marginBottom: 24,
+    minWidth: 140,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12
+      },
+      android: { elevation: 4 }
+    })
+  },
+  playButtonPressed: {
+    opacity: 0.88
   },
   playButtonText: {
     color: colors.buttonText,
-    fontSize: 16,
-    fontWeight: '600'
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.5
   },
   meta: {
-    alignItems: 'center'
+    alignItems: 'center',
+    paddingTop: 4
   },
   metaPrimary: {
     color: colors.text,
-    fontSize: 12,
-    marginBottom: 2
+    fontSize: 13,
+    marginBottom: 4,
+    letterSpacing: 0.3,
+    fontWeight: '500'
   },
-  metaSecondary: {
+  metaNumber: {
     color: colors.text,
+    fontSize: 13,
+    marginBottom: 4,
+    letterSpacing: 0.8,
+    fontWeight: '600'
+  },
+  metaEditor: {
+    color: colors.mutedText,
     fontSize: 12,
-    marginBottom: 2
+    letterSpacing: 0.2,
+    fontWeight: '400'
   },
   gamesLink: {
-    marginTop: 18,
-    padding: 8
+    marginTop: 24,
+    paddingVertical: 10,
+    paddingHorizontal: 16
   },
   gamesLinkText: {
     color: colors.mutedText,
-    fontSize: 14,
-    textDecorationLine: 'underline'
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3
   }
 });
