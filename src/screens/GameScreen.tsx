@@ -1,6 +1,15 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
@@ -17,14 +26,33 @@ const MAX_GUESSES = 6;
 const KEYBOARD_ROWS = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-  ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫']
+  ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫']
 ] as const;
 
+const TILE_GAP = 5;
+const TILE_MIN = 48;
+const TILE_MAX = 68;
+const KEY_GAP = 5;
+const KEY_HEIGHT = 48;
+const KEY_MIN = 28;
+const KEY_WIDE_MIN = 44;
+
 export function GameScreen({ navigation }: Props) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const solution = 'CLIFF';
 
   const [guesses, setGuesses] = useState<string[]>([]);
   const [current, setCurrent] = useState('');
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  const paddingH = Math.max(16, Math.min(24, width * 0.05));
+  const tileSize = Math.min(
+    TILE_MAX,
+    Math.max(TILE_MIN, (width - 2 * paddingH - 4 * TILE_GAP) / 5)
+  );
+  const keyMinWidth = Math.max(KEY_MIN, (width - 2 * paddingH - 9 * KEY_GAP) / 10);
+  const keyWideMinWidth = Math.max(KEY_WIDE_MIN, keyMinWidth * 1.6);
 
   const activeGuessIndex = guesses.length;
 
@@ -139,8 +167,60 @@ export function GameScreen({ navigation }: Props) {
     [current, guesses, navigation, solution]
   );
 
+  const tileStyle = useMemo(
+    () => ({
+      width: tileSize,
+      height: tileSize,
+      margin: TILE_GAP / 2
+    }),
+    [tileSize]
+  );
+
+  const tileFontSize = useMemo(() => Math.min(24, Math.max(16, Math.round(tileSize * 0.42))), [tileSize]);
+
+  const keyStyle = useMemo(
+    () => ({
+      height: KEY_HEIGHT,
+      minWidth: keyMinWidth,
+      borderRadius: 6
+    }),
+    [keyMinWidth]
+  );
+
+  const keyWideStyle = useMemo(() => ({ minWidth: keyWideMinWidth }), [keyWideMinWidth]);
+
+  const keyFontSize = useMemo(() => (width < 360 ? 11 : width < 400 ? 12 : 13), [width]);
+
+  const submitGuess = useCallback(() => {
+    if (current.length !== WORD_LENGTH) return;
+    onKeyPress('ENTER');
+  }, [current, onKeyPress]);
+
   return (
     <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top + 8, paddingHorizontal: Math.max(insets.left, 12), paddingBottom: 12 }]}>
+        <Pressable
+          onPress={() => navigation.navigate('Home')}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
+          hitSlop={12}
+          accessibilityLabel="Home"
+          accessibilityRole="button"
+        >
+          <Text style={styles.headerIcon}>⌂</Text>
+        </Pressable>
+        <View style={styles.headerSpacer} />
+        <Pressable
+          onPress={() => setShowInstructions(true)}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
+          hitSlop={12}
+          accessibilityLabel="Instructions"
+          accessibilityRole="button"
+        >
+          <Text style={styles.headerIcon}>?</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.content, { paddingHorizontal: paddingH, paddingBottom: insets.bottom + 16 }]}>
       <View style={styles.grid}>
         {allRows.map((row: string, r: number) => {
           const rowLetters = row.padEnd(WORD_LENGTH, ' ').slice(0, WORD_LENGTH).split('');
@@ -150,11 +230,13 @@ export function GameScreen({ navigation }: Props) {
             <View key={r} style={styles.row}>
               {rowLetters.map((ch: string, c: number) => {
                 const tileState: TileState = rowEval ? rowEval[c] : ch === ' ' ? 'empty' : 'empty';
+                const isFilled = tileState === 'correct' || tileState === 'present' || tileState === 'absent';
                 return (
                   <View
                     key={c}
                     style={[
-                      styles.tile,
+                      styles.tileBase,
+                      tileStyle,
                       tileState === 'correct'
                         ? styles.tileCorrect
                         : tileState === 'present'
@@ -164,7 +246,7 @@ export function GameScreen({ navigation }: Props) {
                             : styles.tileEmpty
                     ]}
                   >
-                    <Text style={styles.tileText}>{ch === ' ' ? '' : ch}</Text>
+                    <Text style={[styles.tileText, { fontSize: tileFontSize }, isFilled && styles.tileTextFilled]}>{ch === ' ' ? '' : ch}</Text>
                   </View>
                 );
               })}
@@ -178,56 +260,156 @@ export function GameScreen({ navigation }: Props) {
           <View key={i} style={styles.keyboardRow}>
             {row.map((key) => {
               const state = keyStates[key] ?? 'unused';
-              const isWide = key === 'ENTER' || key === '⌫';
+              const isWide = key === '⌫';
+              const isSpecial = state === 'correct' || state === 'present' || state === 'absent';
               return (
                 <Pressable
                   key={key}
                   onPress={() => onKeyPress(key)}
-                  style={[
-                    styles.key,
-                    isWide ? styles.keyWide : undefined,
+                  style={({ pressed }) => [
+                    styles.keyBase,
+                    keyStyle,
+                    isWide && keyWideStyle,
                     state === 'correct'
                       ? styles.keyCorrect
                       : state === 'present'
                         ? styles.keyPresent
                         : state === 'absent'
                           ? styles.keyAbsent
-                          : styles.keyUnused
+                          : styles.keyUnused,
+                    pressed && { opacity: 0.8 }
                   ]}
                 >
-                  <Text style={styles.keyText}>{key}</Text>
+                  <Text style={[styles.keyText, { fontSize: keyFontSize }, isSpecial && styles.keyTextSpecial]}>{key}</Text>
                 </Pressable>
               );
             })}
           </View>
         ))}
       </View>
+
+      <Pressable
+        onPress={submitGuess}
+        style={({ pressed }) => [
+          styles.submitButton,
+          (current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES) && styles.submitButtonDisabled,
+          pressed && current.length === WORD_LENGTH && styles.submitButtonPressed
+        ]}
+        disabled={current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES}
+        accessibilityLabel="Submit word"
+        accessibilityRole="button"
+      >
+        <Text style={styles.submitButtonText}>SUBMIT WORD</Text>
+      </Pressable>
+      </View>
+
+      <Modal
+        visible={showInstructions}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInstructions(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { padding: width < 360 ? 16 : 24 }]}
+          onPress={() => setShowInstructions(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <ScrollView
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScroll}
+            >
+              <Text style={styles.modalTitle}>HOW TO PLAY</Text>
+              <Text style={styles.modalBody}>Guess the mystery 5 letter word!</Text>
+              <Text style={[styles.modalBody, styles.modalBodyLast]}>
+                After each guess, the letters will change colour to show how close you were to the correct word:
+              </Text>
+              <View style={styles.exampleGrid}>
+                {[
+                  { word: 'CRISP', states: ['absent', 'present', 'absent', 'absent', 'absent'] },
+                  { word: 'SHIRT', states: ['absent', 'present', 'absent', 'absent', 'absent'] },
+                  { word: 'HAIRS', states: ['correct', 'correct', 'correct', 'correct', 'correct'] }
+                ].map((row, r) => (
+                  <View key={r} style={styles.exampleRow}>
+                    {row.word.split('').map((ch, c) => (
+                      <View
+                        key={c}
+                        style={[
+                          styles.exampleCell,
+                          { width: Math.min(36, width * 0.09), height: Math.min(36, width * 0.09) },
+                          row.states[c] === 'correct'
+                            ? styles.exampleCorrect
+                            : row.states[c] === 'present'
+                              ? styles.examplePresent
+                              : styles.exampleAbsent
+                        ]}
+                      >
+                        <Text style={[styles.exampleCellText, { fontSize: width < 360 ? 14 : 18 }]}>{ch}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.legendItem}>Grey - the letter is not in the word</Text>
+              <Text style={styles.legendItem}>Orange - the letter is in the word but in the wrong place</Text>
+              <Text style={styles.legendItem}>Green - the letter is correct</Text>
+              <Pressable
+                onPress={() => setShowInstructions(false)}
+                style={({ pressed }) => [styles.tryItButton, pressed && styles.tryItButtonPressed]}
+              >
+                <Text style={styles.tryItButtonText}>Try It!</Text>
+              </Pressable>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
-const TILE = 56;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: colors.background,
-    paddingTop: 14,
-    paddingHorizontal: 12
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.tileBorder
+  },
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.keyUnused,
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  headerButtonPressed: { opacity: 0.7 },
+  headerIcon: { fontSize: 22, fontWeight: '600', color: colors.text },
+  headerSpacer: { width: 44 },
+  content: {
+    flex: 1,
+    paddingTop: 12
   },
   grid: {
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8
+    marginTop: 12,
+    marginBottom: 16
   },
   row: {
-    flexDirection: 'row'
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  tile: {
-    width: TILE,
-    height: TILE,
-    margin: 3,
+  tileBase: {
     borderWidth: 2,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -248,33 +430,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.absent
   },
   tileText: {
-    fontSize: 24,
     fontWeight: '700',
     color: colors.text
   },
+  tileTextFilled: {
+    color: '#FFFFFF'
+  },
   keyboard: {
     marginTop: 'auto',
+    paddingHorizontal: 4,
     paddingBottom: 12
   },
   keyboardRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: KEY_GAP,
     marginBottom: 8
   },
-  key: {
-    height: 44,
-    minWidth: 30,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+  keyBase: {
+    paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center'
   },
-  keyWide: {
-    minWidth: 64
-  },
   keyUnused: {
-    backgroundColor: '#D1D5DB'
+    backgroundColor: colors.keyUnused
   },
   keyAbsent: {
     backgroundColor: colors.absent
@@ -286,8 +465,90 @@ const styles = StyleSheet.create({
     backgroundColor: colors.correct
   },
   keyText: {
-    fontSize: 12,
     fontWeight: '700',
-    color: '#111827'
-  }
+    color: colors.text
+  },
+  keyTextSpecial: {
+    color: '#FFFFFF'
+  },
+  submitButton: {
+    backgroundColor: colors.submitButton,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 8
+  },
+  submitButtonDisabled: { opacity: 0.5 },
+  submitButtonPressed: { opacity: 0.9 },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24
+  },
+  modalContent: {
+    backgroundColor: colors.modalBackground,
+    borderRadius: 16,
+    maxWidth: 400,
+    width: '100%',
+    maxHeight: '90%'
+  },
+  modalScroll: {
+    padding: 24,
+    paddingBottom: 32
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 16
+  },
+  modalBody: {
+    fontSize: 15,
+    color: colors.text,
+    lineHeight: 22,
+    marginBottom: 8
+  },
+  modalBodyLast: { marginBottom: 16 },
+  exampleGrid: { alignItems: 'center', marginBottom: 16 },
+  exampleRow: { flexDirection: 'row', marginBottom: 4 },
+  exampleCell: {
+    width: 36,
+    height: 36,
+    margin: 2,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  exampleCorrect: { backgroundColor: colors.correct },
+  examplePresent: { backgroundColor: colors.present },
+  exampleAbsent: { backgroundColor: colors.absent },
+  exampleCellText: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
+  legendItem: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 6,
+    lineHeight: 20
+  },
+  tryItButton: {
+    backgroundColor: colors.tileEmpty,
+    borderWidth: 2,
+    borderColor: colors.tileBorder,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 20
+  },
+  tryItButtonPressed: { opacity: 0.8 },
+  tryItButtonText: { fontSize: 16, fontWeight: '700', color: colors.text }
 });

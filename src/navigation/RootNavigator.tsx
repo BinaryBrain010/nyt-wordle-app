@@ -6,6 +6,7 @@ import { GameScreen } from '../screens/GameScreen';
 import { GamesScreen } from '../screens/GamesScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ResultScreen } from '../screens/ResultScreen';
+import { colors } from '../theme/colors';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -19,12 +20,18 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+        headerTintColor: colors.text
+      }}
+    >
       <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="Game"
         component={GameScreen}
-        options={{ title: '', headerBackTitleVisible: false }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="Result"
