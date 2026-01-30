@@ -5,16 +5,16 @@ export const colors = {
 
   tileBorder: '#D3D6DA',
   tileEmpty: '#FFFFFF',
-  keyUnused: '#D3D6DA',
+  keyUnused: '#D3D6DB',
 
-  correct: '#6AAA64',
-  present: '#E8A317',
-  absent: '#121213',
+  correct: '#69AB62',
+  present: '#CBB356',
+  absent: '#787C7F',
   loseCross: '#DC2626',
 
   button: '#000000',
   buttonText: '#FFFFFF',
 
   modalBackground: '#F5F0E8',
-  submitButton: '#6AAA64'
+  submitButton: '#69AB62'
 } as const;
