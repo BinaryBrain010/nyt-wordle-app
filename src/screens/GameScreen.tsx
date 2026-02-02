@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
+import { getPlayCount } from '../utils/stats';
+import { getDailyWord } from '../utils/dailyWord';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
@@ -42,13 +44,32 @@ const KEY_WIDE_MIN = 44;
 export function GameScreen({ navigation }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const solution = 'CLIFF';
+  const [playCount, setPlayCount] = useState(0);
+  const [solution, setSolution] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [guesses, setGuesses] = useState<string[]>([]);
   const [current, setCurrent] = useState('');
   const [showInstructions, setShowInstructions] = useState(false);
   const [showLoseOverlay, setShowLoseOverlay] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  // Load play count and set solution word
+  useEffect(() => {
+    getPlayCount().then((count) => {
+      setPlayCount(count);
+      const dailyWord = getDailyWord(count);
+      console.log('Play count:', count, 'Daily word:', dailyWord.word);
+      setSolution(dailyWord.word);
+      setIsLoading(false);
+    }).catch((error) => {
+      console.error('Error loading play count:', error);
+      // Fallback to first word if error
+      const dailyWord = getDailyWord(0);
+      setSolution(dailyWord.word);
+      setIsLoading(false);
+    });
+  }, []);
 
   const paddingH = Math.max(16, Math.min(24, width * 0.05));
   const tileSize = Math.min(
@@ -72,6 +93,7 @@ export function GameScreen({ navigation }: Props) {
 
   const evaluateGuess = useCallback(
     (guess: string): TileState[] => {
+      if (!solution) return Array.from({ length: WORD_LENGTH }, () => 'absent');
       const g = guess.toUpperCase();
       const s = solution.toUpperCase();
       const result: TileState[] = Array.from({ length: WORD_LENGTH }, () => 'absent');
@@ -144,6 +166,7 @@ export function GameScreen({ navigation }: Props) {
         setGuesses(nextGuesses);
         setCurrent('');
 
+        if (!solution) return;
         const won = current.toUpperCase() === solution.toUpperCase();
         if (won) {
           navigation.replace('Result', {
@@ -232,6 +255,15 @@ export function GameScreen({ navigation }: Props) {
     if (current.length !== WORD_LENGTH) return;
     onKeyPress('ENTER');
   }, [current, onKeyPress]);
+
+  // Don't render game until solution is loaded
+  if (isLoading || !solution) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: colors.text }}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

@@ -7,9 +7,11 @@ import { GameScreen } from '../screens/GameScreen';
 import { GamesScreen } from '../screens/GamesScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ResultScreen } from '../screens/ResultScreen';
+import { UsernameScreen } from '../screens/UsernameScreen';
 import { colors } from '../theme/colors';
 
 export type RootStackParamList = {
+  Username: undefined;
   Home: undefined;
   Game: undefined;
   Result: {
@@ -30,15 +32,25 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export function RootNavigator() {
+type RootNavigatorProps = {
+  initialRouteName?: 'Home' | 'Username';
+};
+
+export function RootNavigator({ initialRouteName = 'Home' }: RootNavigatorProps = {}) {
   return (
     <Stack.Navigator
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
         headerTintColor: colors.text
       }}
     >
+      <Stack.Screen
+        name="Username"
+        component={UsernameScreen}
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
       <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="Game"

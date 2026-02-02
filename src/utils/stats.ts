@@ -1,7 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const PLAY_COUNT_KEY = '@wordle/playCount';
-const STATS_KEY = '@wordle/stats';
+import { getCurrentUser } from './users';
 
 export type GameStats = {
   played: number;
@@ -10,21 +8,39 @@ export type GameStats = {
   maxStreak: number;
 };
 
+/**
+ * Get storage keys for the current user
+ * Throws error if no user is set
+ */
+async function getStorageKeys(): Promise<{ playCountKey: string; statsKey: string }> {
+  const username = await getCurrentUser();
+  if (!username) {
+    throw new Error('No user is set. Please enter a username first.');
+  }
+  return {
+    playCountKey: `@wordle/playCount_${username}`,
+    statsKey: `@wordle/stats_${username}`
+  };
+}
+
 export async function getPlayCount(): Promise<number> {
-  const raw = await AsyncStorage.getItem(PLAY_COUNT_KEY);
+  const { playCountKey } = await getStorageKeys();
+  const raw = await AsyncStorage.getItem(playCountKey);
   return parseInt(raw ?? '0', 10) || 0;
 }
 
 export async function incrementPlayCount(): Promise<number> {
   const count = await getPlayCount();
   const next = count + 1;
-  await AsyncStorage.setItem(PLAY_COUNT_KEY, String(next));
+  const { playCountKey } = await getStorageKeys();
+  await AsyncStorage.setItem(playCountKey, String(next));
   return next;
 }
 
 export async function getStats(): Promise<Omit<GameStats, 'played'>> {
   try {
-    const raw = await AsyncStorage.getItem(STATS_KEY);
+    const { statsKey } = await getStorageKeys();
+    const raw = await AsyncStorage.getItem(statsKey);
     if (!raw) return { wins: 0, currentStreak: 0, maxStreak: 0 };
     const parsed = JSON.parse(raw) as Omit<GameStats, 'played'>;
     return {
@@ -38,7 +54,8 @@ export async function getStats(): Promise<Omit<GameStats, 'played'>> {
 }
 
 export async function saveStats(stats: Omit<GameStats, 'played'>): Promise<void> {
-  await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  const { statsKey } = await getStorageKeys();
+  await AsyncStorage.setItem(statsKey, JSON.stringify(stats));
 }
 
 export async function getFullStats(): Promise<GameStats> {

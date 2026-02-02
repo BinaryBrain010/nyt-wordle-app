@@ -1,16 +1,22 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
-
-const PLAY_COUNT_KEY = '@wordle/playCount';
-const PUZZLE_NUMBERS = [321, 819, 902, 918, 1002];
-const START_DATE = new Date(2026, 1, 15);
+import { getCurrentUser, clearCurrentUser } from '../utils/users';
+import { getPlayCount } from '../utils/stats';
+import { getDisplayDate, getPuzzleNumberString } from '../utils/dailyWord';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -61,6 +67,8 @@ export function HomeScreen({ navigation }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [playCount, setPlayCount] = useState(0);
+  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -76,25 +84,30 @@ export function HomeScreen({ navigation }: Props) {
       iconCellSize: Math.min(26, Math.max(18, width * 0.06)),
       playPaddingV: isShort ? 14 : 16,
       playPaddingH: Math.min(44, width * 0.12),
-      metaSize: isNarrow ? 12 : 13
+      metaSize: isNarrow ? 12 : 13,
+      usernameSize: isNarrow ? 12 : 13,
+      profileButtonSize: Math.min(48, Math.max(40, width * 0.12)),
+      profileIconSize: Math.min(22, Math.max(18, width * 0.055)),
+      profileButtonTop: insets.top + (isShort ? 20 : 32)
     };
   }, [width, height, insets.top, insets.bottom]);
 
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.getItem(PLAY_COUNT_KEY).then((raw) => {
-        setPlayCount(Math.min(parseInt(raw ?? '0', 10), PUZZLE_NUMBERS.length - 1));
+      getCurrentUser().then(setCurrentUsername);
+      getPlayCount().then((count) => {
+        setPlayCount(count);
       });
     }, [])
   );
 
-  const displayDate = (() => {
-    const d = new Date(START_DATE);
-    d.setDate(d.getDate() + playCount);
-    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  })();
-  const puzzleNum = PUZZLE_NUMBERS[playCount] ?? PUZZLE_NUMBERS[PUZZLE_NUMBERS.length - 1];
-  const puzzleNumStr = `No. ${String(puzzleNum).padStart(4, '0')}`;
+  const handleSwitchUser = async () => {
+    await clearCurrentUser();
+    navigation.reset({ index: 0, routes: [{ name: 'Username' }] });
+  };
+
+  const displayDate = getDisplayDate(playCount);
+  const puzzleNumStr = getPuzzleNumberString(playCount);
 
   return (
     <View
@@ -107,6 +120,24 @@ export function HomeScreen({ navigation }: Props) {
         }
       ]}
     >
+      {/* Profile Button at Top Right */}
+      <Pressable
+        style={[
+          styles.profileButton,
+          {
+            top: responsive.profileButtonTop,
+            right: responsive.paddingH,
+            width: responsive.profileButtonSize,
+            height: responsive.profileButtonSize,
+            borderRadius: responsive.profileButtonSize / 2
+          }
+        ]}
+        onPress={() => setShowProfileModal(true)}
+        hitSlop={8}
+      >
+        <Text style={[styles.profileIcon, { fontSize: responsive.profileIconSize }]}>👤</Text>
+      </Pressable>
+
       <View style={styles.center}>
         <WordleIcon cellSize={responsive.iconCellSize} />
         <View style={styles.accentLine} />
@@ -142,11 +173,51 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
           <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
         </View>
-
-        <Pressable style={styles.gamesLink} onPress={() => navigation.navigate('Games')}>
-          <Text style={styles.gamesLinkText}>Games</Text>
-        </Pressable>
       </View>
+
+      {/* Profile Modal */}
+      <Modal
+        visible={showProfileModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProfileModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowProfileModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Profile</Text>
+            {currentUsername && (
+              <View style={styles.usernameInfo}>
+                <Text style={styles.usernameLabel}>Playing as:</Text>
+                <Text style={styles.usernameValue}>{currentUsername}</Text>
+              </View>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.logoutButton,
+                pressed && styles.logoutButtonPressed
+              ]}
+              onPress={async () => {
+                setShowProfileModal(false);
+                await handleSwitchUser();
+              }}
+            >
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.closeButton,
+                pressed && styles.closeButtonPressed
+              ]}
+              onPress={() => setShowProfileModal(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -243,15 +314,100 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     fontWeight: '400'
   },
-  gamesLink: {
-    marginTop: 24,
-    paddingVertical: 10,
-    paddingHorizontal: 16
+  profileButton: {
+    position: 'absolute',
+    backgroundColor: colors.tileEmpty,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+    zIndex: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4
+      },
+      android: { elevation: 3 }
+    })
   },
-  gamesLinkText: {
+  profileIcon: {
+    textAlign: 'center'
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24
+  },
+  modalContent: {
+    backgroundColor: colors.modalBackground,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 320,
+    padding: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12
+      },
+      android: { elevation: 8 }
+    })
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 20
+  },
+  usernameInfo: {
+    marginBottom: 24,
+    alignItems: 'center'
+  },
+  usernameLabel: {
+    fontSize: 14,
+    color: colors.mutedText,
+    marginBottom: 8,
+    fontWeight: '500'
+  },
+  usernameValue: {
+    fontSize: 18,
+    color: colors.text,
+    fontWeight: '700'
+  },
+  logoutButton: {
+    backgroundColor: colors.button,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12
+  },
+  logoutButtonPressed: {
+    opacity: 0.88
+  },
+  logoutButtonText: {
+    color: colors.buttonText,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5
+  },
+  closeButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  closeButtonPressed: {
+    opacity: 0.7
+  },
+  closeButtonText: {
     color: colors.mutedText,
     fontSize: 15,
-    fontWeight: '500',
-    letterSpacing: 0.3
+    fontWeight: '500'
   }
 });
