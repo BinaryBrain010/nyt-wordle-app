@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount } from '../utils/stats';
+import { getPlayCount, getFullStats, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString } from '../utils/dailyWord';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -69,6 +69,8 @@ export function HomeScreen({ navigation }: Props) {
   const [playCount, setPlayCount] = useState(0);
   const [currentUsername, setCurrentUsername] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [stats, setStats] = useState<GameStats | null>(null);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -187,13 +189,34 @@ export function HomeScreen({ navigation }: Props) {
           onPress={() => setShowProfileModal(false)}
         >
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Profile</Text>
+            <View style={styles.profileHeader}>
+              <View style={styles.profileIconContainer}>
+                <Text style={styles.profileIconLarge}>👤</Text>
+              </View>
+              <Text style={styles.modalTitle}>Profile</Text>
+            </View>
             {currentUsername && (
               <View style={styles.usernameInfo}>
-                <Text style={styles.usernameLabel}>Playing as:</Text>
-                <Text style={styles.usernameValue}>{currentUsername}</Text>
+                <Text style={styles.usernameLabel}>Playing as</Text>
+                <View style={styles.usernameBadge}>
+                  <Text style={styles.usernameValue}>{currentUsername}</Text>
+                </View>
               </View>
             )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.statsButton,
+                pressed && styles.statsButtonPressed
+              ]}
+              onPress={async () => {
+                const fullStats = await getFullStats();
+                setStats(fullStats);
+                setShowProfileModal(false);
+                setShowStatsModal(true);
+              }}
+            >
+              <Text style={styles.statsButtonText}>Stats</Text>
+            </Pressable>
             <Pressable
               style={({ pressed }) => [
                 styles.logoutButton,
@@ -215,6 +238,66 @@ export function HomeScreen({ navigation }: Props) {
             >
               <Text style={styles.closeButtonText}>Close</Text>
             </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Stats Modal */}
+      <Modal
+        visible={showStatsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStatsModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowStatsModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.statsHeader}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.backButton,
+                  pressed && styles.backButtonPressed
+                ]}
+                onPress={() => {
+                  setShowStatsModal(false);
+                  setShowProfileModal(true);
+                }}
+              >
+                <Text style={styles.backButtonText}>←</Text>
+              </Pressable>
+              <View style={styles.statsTitleContainer}>
+                <Text style={styles.modalTitle}>Statistics</Text>
+              </View>
+              <View style={styles.backButtonPlaceholder} />
+            </View>
+            {stats && (
+              <View style={styles.statsContainer}>
+                <View style={styles.statsRow}>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{stats.played}</Text>
+                    <Text style={styles.statLabel}>Played</Text>
+                  </View>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>
+                      {stats.played > 0 ? Math.round((100 * stats.wins) / stats.played) : 0}
+                    </Text>
+                    <Text style={styles.statLabel}>Win %</Text>
+                  </View>
+                </View>
+                <View style={styles.statsRow}>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{stats.currentStreak}</Text>
+                    <Text style={styles.statLabel}>Current{'\n'}Streak</Text>
+                  </View>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statValue}>{stats.maxStreak}</Text>
+                    <Text style={styles.statLabel}>Max{'\n'}Streak</Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -358,27 +441,102 @@ const styles = StyleSheet.create({
       android: { elevation: 8 }
     })
   },
+  profileHeader: {
+    alignItems: 'center',
+    marginBottom: 24
+  },
+  profileIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.tileEmpty,
+    borderWidth: 2,
+    borderColor: colors.correct,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4
+      },
+      android: { elevation: 3 }
+    })
+  },
+  profileIconLarge: {
+    fontSize: 32
+  },
   modalTitle: {
     fontSize: 22,
     fontWeight: '800',
     color: colors.text,
-    textAlign: 'center',
-    marginBottom: 20
+    textAlign: 'center'
   },
   usernameInfo: {
     marginBottom: 24,
     alignItems: 'center'
   },
   usernameLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.mutedText,
-    marginBottom: 8,
-    fontWeight: '500'
+    marginBottom: 10,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 1
+  },
+  usernameBadge: {
+    backgroundColor: colors.correct,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4
+      },
+      android: { elevation: 3 }
+    })
   },
   usernameValue: {
     fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: 0.5
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  statsTitleContainer: {
+    flex: 1,
+    alignItems: 'center'
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.tileEmpty,
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  backButtonPressed: {
+    opacity: 0.7
+  },
+  backButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
     color: colors.text,
-    fontWeight: '700'
+    marginTop: -2
+  },
+  backButtonPlaceholder: {
+    width: 36
   },
   logoutButton: {
     backgroundColor: colors.button,
@@ -409,5 +567,53 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
     fontSize: 15,
     fontWeight: '500'
-  }
+  },
+  statsButton: {
+    backgroundColor: colors.correct,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12
+  },
+  statsButtonPressed: {
+    opacity: 0.88
+  },
+  statsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5
+  },
+  statsContainer: {
+    marginBottom: 24,
+    gap: 12
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between'
+  },
+  statBox: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.tileEmpty
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6
+  },
+  statLabel: {
+    fontSize: 11,
+    color: colors.mutedText,
+    textAlign: 'center',
+    lineHeight: 14
+  },
 });
