@@ -59,11 +59,9 @@ export function GameScreen({ navigation }: Props) {
     getPlayCount().then((count) => {
       setPlayCount(count);
       const dailyWord = getDailyWord(count);
-      console.log('Play count:', count, 'Daily word:', dailyWord.word);
       setSolution(dailyWord.word);
       setIsLoading(false);
-    }).catch((error) => {
-      console.error('Error loading play count:', error);
+    }).catch(() => {
       // Fallback to first word if error
       const dailyWord = getDailyWord(0);
       setSolution(dailyWord.word);
