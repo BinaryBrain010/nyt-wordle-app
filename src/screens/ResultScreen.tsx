@@ -15,10 +15,12 @@ import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import {
   getFullStats,
+  getPlayCount,
   incrementPlayCount,
   updateStatsAfterGame,
   type GameStats
 } from '../utils/stats';
+import { getDailyWord } from '../utils/dailyWord';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
@@ -215,8 +217,13 @@ export function ResultScreen({ navigation, route }: Props) {
     if (updated.current) return;
     updated.current = true;
     (async () => {
+      // Get the current play count to determine the game date
+      const currentPlayCount = await getPlayCount();
+      const dailyWord = getDailyWord(currentPlayCount);
+      const gameDate = dailyWord.date.toISOString().split('T')[0];
+      
       const playedCount = await incrementPlayCount();
-      const fullStats = await updateStatsAfterGame(outcome, playedCount);
+      const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);
       setStats(fullStats);
     })();
   }, [outcome, fromFinishedPuzzle]);

@@ -4,6 +4,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -17,6 +18,7 @@ import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
 import { getPlayCount, getFullStats, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString } from '../utils/dailyWord';
+import { GameCalendar } from '../components/GameCalendar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -70,7 +72,9 @@ export function HomeScreen({ navigation }: Props) {
   const [currentUsername, setCurrentUsername] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [stats, setStats] = useState<GameStats | null>(null);
+  const [statsOpenedFrom, setStatsOpenedFrom] = useState<'profile' | 'calendar'>('profile');
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -122,16 +126,38 @@ export function HomeScreen({ navigation }: Props) {
         }
       ]}
     >
-      {/* Profile Button at Top Right */}
+      {/* Top Left - Calendar Button */}
       <Pressable
         style={[
-          styles.profileButton,
+          styles.iconButton,
           {
+            position: 'absolute',
+            top: responsive.profileButtonTop,
+            left: responsive.paddingH,
+            width: responsive.profileButtonSize,
+            height: responsive.profileButtonSize,
+            borderRadius: responsive.profileButtonSize / 2,
+            zIndex: 10
+          }
+        ]}
+        onPress={() => setShowCalendarModal(true)}
+        hitSlop={8}
+      >
+        <Text style={[styles.profileIcon, { fontSize: responsive.profileIconSize }]}>📅</Text>
+      </Pressable>
+
+      {/* Top Right - Profile Button */}
+      <Pressable
+        style={[
+          styles.iconButton,
+          {
+            position: 'absolute',
             top: responsive.profileButtonTop,
             right: responsive.paddingH,
             width: responsive.profileButtonSize,
             height: responsive.profileButtonSize,
-            borderRadius: responsive.profileButtonSize / 2
+            borderRadius: responsive.profileButtonSize / 2,
+            zIndex: 10
           }
         ]}
         onPress={() => setShowProfileModal(true)}
@@ -211,6 +237,7 @@ export function HomeScreen({ navigation }: Props) {
               onPress={async () => {
                 const fullStats = await getFullStats();
                 setStats(fullStats);
+                setStatsOpenedFrom('profile');
                 setShowProfileModal(false);
                 setShowStatsModal(true);
               }}
@@ -249,11 +276,8 @@ export function HomeScreen({ navigation }: Props) {
         animationType="fade"
         onRequestClose={() => setShowStatsModal(false)}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowStatsModal(false)}
-        >
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.statsModalOverlay}>
+          <View style={styles.statsModalContent}>
             <View style={styles.statsHeader}>
               <Pressable
                 style={({ pressed }) => [
@@ -262,7 +286,11 @@ export function HomeScreen({ navigation }: Props) {
                 ]}
                 onPress={() => {
                   setShowStatsModal(false);
-                  setShowProfileModal(true);
+                  if (statsOpenedFrom === 'profile') {
+                    setShowProfileModal(true);
+                  } else {
+                    setShowCalendarModal(true);
+                  }
                 }}
               >
                 <Text style={styles.backButtonText}>←</Text>
@@ -270,36 +298,105 @@ export function HomeScreen({ navigation }: Props) {
               <View style={styles.statsTitleContainer}>
                 <Text style={styles.modalTitle}>Statistics</Text>
               </View>
-              <View style={styles.backButtonPlaceholder} />
+              <Pressable
+                style={({ pressed }) => [
+                  styles.closeIconButton,
+                  pressed && styles.backButtonPressed
+                ]}
+                onPress={() => setShowStatsModal(false)}
+              >
+                <Text style={styles.closeIconText}>✕</Text>
+              </Pressable>
             </View>
-            {stats && (
-              <View style={styles.statsContainer}>
-                <View style={styles.statsRow}>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{stats.played}</Text>
-                    <Text style={styles.statLabel}>Played</Text>
+            
+            <ScrollView 
+              style={styles.statsScrollView}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {/* Calendar Section */}
+              <GameCalendar />
+
+              {/* Stats Grid */}
+              {stats && (
+                <View style={styles.statsContainer}>
+                  <Text style={styles.statsGridTitle}>📊 Your Stats</Text>
+                  <View style={styles.statsRow}>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{stats.played}</Text>
+                      <Text style={styles.statLabel}>Played</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>
+                        {stats.played > 0 ? Math.round((100 * stats.wins) / stats.played) : 0}
+                      </Text>
+                      <Text style={styles.statLabel}>Win %</Text>
+                    </View>
                   </View>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>
-                      {stats.played > 0 ? Math.round((100 * stats.wins) / stats.played) : 0}
-                    </Text>
-                    <Text style={styles.statLabel}>Win %</Text>
+                  <View style={styles.statsRow}>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{stats.currentStreak}</Text>
+                      <Text style={styles.statLabel}>Current{'\n'}Streak</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{stats.maxStreak}</Text>
+                      <Text style={styles.statLabel}>Max{'\n'}Streak</Text>
+                    </View>
                   </View>
                 </View>
-                <View style={styles.statsRow}>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{stats.currentStreak}</Text>
-                    <Text style={styles.statLabel}>Current{'\n'}Streak</Text>
-                  </View>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{stats.maxStreak}</Text>
-                    <Text style={styles.statLabel}>Max{'\n'}Streak</Text>
-                  </View>
-                </View>
-              </View>
-            )}
-          </Pressable>
-        </Pressable>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Calendar Modal */}
+      <Modal
+        visible={showCalendarModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCalendarModal(false)}
+      >
+        <View style={styles.statsModalOverlay}>
+          <View style={styles.calendarModalContent}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.modalTitle}>Game Calendar</Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.closeIconButton,
+                  pressed && styles.backButtonPressed
+                ]}
+                onPress={() => setShowCalendarModal(false)}
+              >
+                <Text style={styles.closeIconText}>✕</Text>
+              </Pressable>
+            </View>
+            
+            <ScrollView 
+              style={styles.statsScrollView}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <GameCalendar />
+              
+              <Pressable
+                style={({ pressed }) => [
+                  styles.statsLinkButton,
+                  pressed && styles.statsButtonPressed
+                ]}
+                onPress={async () => {
+                  const fullStats = await getFullStats();
+                  setStats(fullStats);
+                  setStatsOpenedFrom('calendar');
+                  setShowCalendarModal(false);
+                  setShowStatsModal(true);
+                }}
+              >
+                <Text style={styles.statsLinkText}>Stats →</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -397,14 +494,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     fontWeight: '400'
   },
-  profileButton: {
-    position: 'absolute',
+  iconButton: {
     backgroundColor: colors.tileEmpty,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.tileBorder,
-    zIndex: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -424,6 +519,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24
+  },
+  statsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16
+  },
+  statsModalContent: {
+    backgroundColor: colors.modalBackground,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 380,
+    maxHeight: '85%',
+    padding: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16
+      },
+      android: { elevation: 12 }
+    })
+  },
+  statsScrollView: {
+    flexGrow: 0
+  },
+  closeIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.tileEmpty,
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  closeIconText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.mutedText
+  },
+  statsGridTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 16
   },
   modalContent: {
     backgroundColor: colors.modalBackground,
@@ -616,4 +761,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 14
   },
+  calendarModalContent: {
+    backgroundColor: colors.modalBackground,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 380,
+    maxHeight: '75%',
+    padding: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16
+      },
+      android: { elevation: 12 }
+    })
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20
+  },
+  statsLinkButton: {
+    backgroundColor: colors.correct,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8
+      },
+      android: { elevation: 3 }
+    })
+  },
+  statsLinkText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5
+  }
 });

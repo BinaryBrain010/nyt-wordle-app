@@ -8,18 +8,25 @@ export type GameStats = {
   maxStreak: number;
 };
 
+export type GameResult = 'win' | 'lose';
+
+export type CalendarHistory = {
+  [date: string]: GameResult; // date format: 'YYYY-MM-DD'
+};
+
 /**
  * Get storage keys for the current user
  * Throws error if no user is set
  */
-async function getStorageKeys(): Promise<{ playCountKey: string; statsKey: string }> {
+async function getStorageKeys(): Promise<{ playCountKey: string; statsKey: string; historyKey: string }> {
   const username = await getCurrentUser();
   if (!username) {
     throw new Error('No user is set. Please enter a username first.');
   }
   return {
     playCountKey: `@wordle/playCount_${username}`,
-    statsKey: `@wordle/stats_${username}`
+    statsKey: `@wordle/stats_${username}`,
+    historyKey: `@wordle/history_${username}`
   };
 }
 
@@ -65,17 +72,47 @@ export async function getFullStats(): Promise<GameStats> {
 
 export async function updateStatsAfterGame(
   outcome: 'win' | 'lose',
-  playedCount: number
+  playedCount: number,
+  gameDate?: string // Optional date in 'YYYY-MM-DD' format
 ): Promise<GameStats> {
   const stats = await getStats();
   const wins = stats.wins + (outcome === 'win' ? 1 : 0);
   const currentStreak = outcome === 'win' ? stats.currentStreak + 1 : 0;
   const maxStreak = Math.max(stats.maxStreak, currentStreak);
   await saveStats({ wins, currentStreak, maxStreak });
+  
+  // Save to calendar history
+  const date = gameDate || new Date().toISOString().split('T')[0];
+  await saveGameToHistory(date, outcome);
+  
   return {
     played: playedCount,
     wins,
     currentStreak,
     maxStreak
   };
+}
+
+/**
+ * Get calendar history for the current user
+ */
+export async function getCalendarHistory(): Promise<CalendarHistory> {
+  try {
+    const { historyKey } = await getStorageKeys();
+    const raw = await AsyncStorage.getItem(historyKey);
+    if (!raw) return {};
+    return JSON.parse(raw) as CalendarHistory;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Save a game result to calendar history
+ */
+export async function saveGameToHistory(date: string, result: GameResult): Promise<void> {
+  const { historyKey } = await getStorageKeys();
+  const history = await getCalendarHistory();
+  history[date] = result;
+  await AsyncStorage.setItem(historyKey, JSON.stringify(history));
 }
