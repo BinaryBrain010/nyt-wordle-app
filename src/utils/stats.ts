@@ -164,3 +164,15 @@ export async function getGuessesForDate(date: string): Promise<string[] | null> 
     return null;
   }
 }
+
+/**
+ * Get the result for a specific date
+ */
+export async function getResultForDate(date: string): Promise<GameResult | null> {
+  try {
+    const history = await getCalendarHistory();
+    return history[date] || null;
+  } catch {
+    return null;
+  }
+}

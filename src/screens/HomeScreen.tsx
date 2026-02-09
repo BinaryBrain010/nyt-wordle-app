@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, type GameStats } from '../utils/stats';
+import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDailyWord, getTodayDateString, hasGameStarted } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
 
@@ -130,19 +130,25 @@ export function HomeScreen({ navigation }: Props) {
     setShowCalendarModal(false);
     
     if (hasPlayed) {
-      // User has played this puzzle - show the finished puzzle
-      const guesses = await getGuessesForDate(dateStr);
-      const dailyWord = getDailyWordForDate(dateStr);
-      const history = await getFullStats();
+      // User has played this puzzle - check if they won or lost
+      const result = await getResultForDate(dateStr);
       
-      if (guesses) {
-        const outcome = guesses[guesses.length - 1].toUpperCase() === dailyWord.word.toUpperCase() ? 'win' : 'lose';
-        navigation.navigate('FinishedPuzzle', {
-          outcome,
-          guessesUsed: guesses.length,
-          guesses,
-          solution: dailyWord.word
-        });
+      if (result === 'lose') {
+        // Lost game - allow replay
+        navigation.navigate('Game', { dateToPlay: dateStr });
+      } else {
+        // Won game - show the finished puzzle (locked)
+        const guesses = await getGuessesForDate(dateStr);
+        const dailyWord = getDailyWordForDate(dateStr);
+        
+        if (guesses) {
+          navigation.navigate('FinishedPuzzle', {
+            outcome: 'win',
+            guessesUsed: guesses.length,
+            guesses,
+            solution: dailyWord.word
+          });
+        }
       }
     } else {
       // User hasn't played this puzzle - let them play it

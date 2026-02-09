@@ -330,20 +330,11 @@ export function ResultScreen({ navigation, route }: Props) {
         <Pressable
           style={styles.backButton}
           onPress={() => {
-            if (outcome === 'lose') {
-              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-            } else {
-              navigation.replace('FinishedPuzzle', {
-                outcome,
-                guessesUsed,
-                guesses,
-                solution
-              });
-            }
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           }}
         >
           <Text style={[styles.backButtonText, { fontSize: width < 360 ? 14 : 16 }]}>
-            {outcome === 'lose' ? 'Back to home' : 'Back to puzzle'}
+            Back to home
           </Text>
         </Pressable>
       </ScrollView>

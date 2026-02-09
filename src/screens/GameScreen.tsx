@@ -244,14 +244,14 @@ export function GameScreen({ navigation, route }: Props) {
         outcome: 'lose',
         guessesUsed: MAX_GUESSES,
         guesses,
-        solution,
+        solution: solution ?? undefined,
         gameDate
       });
     }, 1600);
     return () => clearTimeout(t);
   }, [showLoseOverlay, navigation, shakeAnim, guesses, solution, gameDate]);
 
-  // Handle win delay - show correct word in green for 10 seconds
+  // Handle win delay - show correct word in green for 5 seconds
   useEffect(() => {
     if (!showWinDelay) return;
     const t = setTimeout(() => {
@@ -259,10 +259,10 @@ export function GameScreen({ navigation, route }: Props) {
         outcome: 'win',
         guessesUsed: guesses.length,
         guesses,
-        solution,
+        solution: solution ?? undefined,
         gameDate
       });
-    }, 10000);
+    }, 5000);
     return () => clearTimeout(t);
   }, [showWinDelay, navigation, guesses, solution, gameDate]);
 
