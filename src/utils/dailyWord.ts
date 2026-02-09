@@ -1,4 +1,4 @@
-const START_DATE = new Date(2026, 1, 9); // Feb 9, 2026 (month is 0-indexed)
+const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
 
 const DAILY_WORDS = ['LMFAO', 'GUCCI', 'SLEEP', 'YANNO', 'WANGE'];
 const PUZZLE_NUMBERS = [321, 819, 902, 918, 1002];
