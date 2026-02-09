@@ -1,3 +1,5 @@
+
+
 const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
 
 const DAILY_WORDS = ['LMFAO', 'GUCCI', 'SLEEP', 'YANNO', 'WANGE'];
@@ -54,11 +56,21 @@ export function getPuzzleNumberString(playCount: number): string {
 /**
  * Calculate the play count from a date string
  * Returns the number of days between START_DATE and the given date
+ * Handles timezone issues by parsing string as local date
  */
 export function getPlayCountFromDate(dateStr: string): number {
-  const targetDate = new Date(dateStr);
-  const timeDiff = targetDate.getTime() - START_DATE.getTime();
-  const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+
+  const targetDate = new Date(year, month, day);
+
+  // Create a clean version of START_DATE at midnight local
+  const start = new Date(START_DATE.getFullYear(), START_DATE.getMonth(), START_DATE.getDate());
+
+  const timeDiff = targetDate.getTime() - start.getTime();
+  const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
   return Math.max(0, daysDiff);
 }
 
@@ -71,11 +83,14 @@ export function getDailyWordForDate(dateStr: string): DailyWordInfo {
 }
 
 /**
- * Get today's date as a YYYY-MM-DD string
+ * Get today's date as a YYYY-MM-DD string in local time
  */
 export function getTodayDateString(): string {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -113,3 +128,4 @@ export function hasGameStarted(): boolean {
 
   return today >= startDate;
 }
+

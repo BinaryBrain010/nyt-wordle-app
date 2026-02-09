@@ -20,6 +20,8 @@ import {
   updateStatsAfterGame,
   saveGuessesForDate,
   saveLostGameTimestamp,
+  isDateAlreadyPlayed,
+  updateReplayResult,
   type GameStats
 } from '../utils/stats';
 import { getDailyWord } from '../utils/dailyWord';
@@ -228,18 +230,29 @@ export function ResultScreen({ navigation, route }: Props) {
         const dailyWord = getDailyWord(currentPlayCount);
         gameDate = dailyWord.date.toISOString().split('T')[0];
       }
-      
-      // Save the guesses for this date
-      await saveGuessesForDate(gameDate, guesses);
-      
-      // If the user lost, save the timestamp for replay lock
-      if (outcome === 'lose') {
-        await saveLostGameTimestamp(gameDate);
+
+      // Check if this is a replay (date already exists in history)
+      const isReplay = await isDateAlreadyPlayed(gameDate);
+
+      if (isReplay) {
+        // This is a REPLAY - only update the result, not stats
+        // This prevents play count and win stats from being inflated
+        const currentStats = await updateReplayResult(gameDate, outcome, guesses ?? []);
+        setStats(currentStats);
+      } else {
+        // This is a FIRST-TIME play - update everything normally
+        // Save the guesses for this date
+        await saveGuessesForDate(gameDate, guesses ?? []);
+
+        // If the user lost, save the timestamp for replay lock
+        if (outcome === 'lose') {
+          await saveLostGameTimestamp(gameDate);
+        }
+
+        const playedCount = await incrementPlayCount();
+        const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);
+        setStats(fullStats);
       }
-      
-      const playedCount = await incrementPlayCount();
-      const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);
-      setStats(fullStats);
     })();
   }, [outcome, fromFinishedPuzzle, guesses, routeGameDate]);
 

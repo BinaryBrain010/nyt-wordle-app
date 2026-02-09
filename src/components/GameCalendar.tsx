@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
-import { CalendarHistory, getCalendarHistory } from '../utils/stats';
+import { CalendarHistory, getCalendarHistory, canReplayLostGame } from '../utils/stats';
 
 const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
 
@@ -30,6 +30,7 @@ type GameCalendarProps = {
 export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   const [history, setHistory] = useState<CalendarHistory>({});
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [replayableDates, setReplayableDates] = useState<Set<string>>(new Set());
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -41,6 +42,18 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   const loadHistory = async () => {
     const data = await getCalendarHistory();
     setHistory(data);
+
+    // Check which lost games are replayable
+    const replayable = new Set<string>();
+    for (const [date, result] of Object.entries(data)) {
+      if (result === 'lose') {
+        const { canReplay } = await canReplayLostGame(date);
+        if (canReplay) {
+          replayable.add(date);
+        }
+      }
+    }
+    setReplayableDates(replayable);
   };
 
   const goToPrevMonth = () => {
@@ -106,6 +119,16 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
             </View>
             <Text style={styles.legendText}>Loss</Text>
           </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, styles.replayableDot]}>
+              <Text style={styles.legendMark}>🔄</Text>
+            </View>
+            <Text style={styles.legendText}>Retry</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { borderColor: colors.tileBorder, borderWidth: 1 }]} />
+            <Text style={styles.legendText}>Missed</Text>
+          </View>
         </View>
       </View>
 
@@ -160,6 +183,9 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
               const isBeforeStart = currentDate < startDateNormalized;
               const isPastOrToday = !isFuture && !isBeforeStart;
               const hasPlayed = !!result;
+              const isReplayable = result === 'lose' && replayableDates.has(dateStr);
+              const isLocked = result === 'lose' && !replayableDates.has(dateStr);
+              const isMissed = !isFuture && !isBeforeStart && !isToday && !hasPlayed;
 
               return (
                 <Pressable
@@ -172,7 +198,9 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
                     style={[
                       styles.dayContent,
                       result === 'win' && styles.winDay,
-                      result === 'lose' && styles.loseDay,
+                      isLocked && styles.loseDay,
+                      isReplayable && styles.replayableDay,
+                      isMissed && styles.missedDay,
                       isToday && !result && styles.todayDay,
                       isPastOrToday && onDatePress && styles.clickableDay
                     ]}
@@ -181,20 +209,22 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
                       style={[
                         styles.dayText,
                         result === 'win' && styles.winDayText,
-                        result === 'lose' && styles.loseDayText,
+                        isLocked && styles.loseDayText,
+                        isReplayable && styles.replayableDayText,
                         (isFuture || isBeforeStart) && styles.futureText,
                         isToday && !result && styles.todayText
                       ]}
                     >
                       {day}
                     </Text>
-                    {result && (
-                      <Text style={[
-                        styles.resultMark,
-                        result === 'lose' && styles.loseMarkText
-                      ]}>
-                        {result === 'win' ? '✓' : '✗'}
-                      </Text>
+                    {result === 'win' && (
+                      <Text style={styles.resultMark}>✓</Text>
+                    )}
+                    {isLocked && (
+                      <Text style={[styles.resultMark, styles.loseMarkText]}>🔒</Text>
+                    )}
+                    {isReplayable && (
+                      <Text style={[styles.resultMark, styles.replayableMarkText]}>🔄</Text>
                     )}
                   </View>
                 </Pressable>
@@ -335,6 +365,22 @@ const styles = StyleSheet.create({
   loseDay: {
     backgroundColor: colors.loseCross
   },
+  missedDay: {
+    borderWidth: 2,
+    borderColor: colors.tileBorder,
+    backgroundColor: '#FAFAFA'
+  },
+  replayableDay: {
+    backgroundColor: colors.present,
+    borderWidth: 2,
+    borderColor: colors.correct,
+    borderStyle: 'dashed'
+  },
+  replayableDot: {
+    backgroundColor: colors.present,
+    borderWidth: 1,
+    borderColor: colors.correct
+  },
   todayDay: {
     borderWidth: 2,
     borderColor: colors.correct
@@ -372,5 +418,15 @@ const styles = StyleSheet.create({
   },
   loseMarkText: {
     color: '#000000'
+  },
+  replayableDayText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    marginTop: -2,
+    fontWeight: '700'
+  },
+  replayableMarkText: {
+    fontSize: 8,
+    marginTop: -1
   }
 });

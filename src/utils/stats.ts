@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCurrentUser } from './users';
 
+// Helper to get local date string YYYY-MM-DD
+function getTodayStringLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export type GameStats = {
   played: number;
   wins: number;
@@ -82,7 +88,7 @@ export async function updateStatsAfterGame(
   await saveStats({ wins, currentStreak, maxStreak });
 
   // Save to calendar history
-  const date = gameDate || new Date().toISOString().split('T')[0];
+  const date = gameDate || getTodayStringLocal();
   await saveGameToHistory(date, outcome);
 
   return {
@@ -120,14 +126,14 @@ export async function saveGameToHistory(date: string, result: GameResult): Promi
 /**
  * Check if today's puzzle has been played
  * Returns true if the user has already played the puzzle for today's date
+ * Uses the fake date system for testing
  */
 export async function hasPlayedCurrentPuzzle(): Promise<boolean> {
   try {
     const history = await getCalendarHistory();
 
     // Get today's date
-    const { getTodayDateString } = require('./dailyWord');
-    const todayStr = getTodayDateString();
+    const todayStr = getTodayStringLocal();
 
     // Check if today's date exists in history
     return todayStr in history;
@@ -197,6 +203,43 @@ export async function saveLostGameTimestamp(date: string): Promise<void> {
  * Check if a lost game can be replayed (must wait until next day/midnight)
  * With the fake date system, this compares the game date to "today" (which may be fake)
  */
+/**
+ * Check if a specific date has already been played
+ */
+export async function isDateAlreadyPlayed(date: string): Promise<boolean> {
+  try {
+    const history = await getCalendarHistory();
+    return date in history;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Update only the game result for a replay (no stats change)
+ * This is used when replaying a lost game - we only update the result in history
+ * without incrementing play count or changing other stats
+ */
+export async function updateReplayResult(
+  date: string,
+  outcome: 'win' | 'lose',
+  guesses: string[]
+): Promise<GameStats> {
+  // Save the new guesses
+  await saveGuessesForDate(date, guesses);
+
+  // Update the history with new result
+  await saveGameToHistory(date, outcome);
+
+  // If still losing, save the timestamp for lock mechanism
+  if (outcome === 'lose') {
+    await saveLostGameTimestamp(date);
+  }
+
+  // Return current stats without modification
+  return await getFullStats();
+}
+
 export async function canReplayLostGame(date: string): Promise<{ canReplay: boolean; timeRemaining?: number }> {
   try {
     const username = await getCurrentUser();
@@ -211,22 +254,22 @@ export async function canReplayLostGame(date: string): Promise<{ canReplay: bool
     }
 
     // Get today's date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Parse the game date
-    const gameDate = new Date(date);
-    gameDate.setHours(0, 0, 0, 0);
+    // Parse the timestamp of the last loss
+    const lastAttemptTime = parseInt(timestampStr, 10);
+    const lastAttempt = new Date(lastAttemptTime);
+    const lastAttemptDay = new Date(lastAttempt.getFullYear(), lastAttempt.getMonth(), lastAttempt.getDate());
 
-    // Check if today is at least one day after the game date
-    const daysDiff = Math.floor((today.getTime() - gameDate.getTime()) / (1000 * 60 * 60 * 24));
+    // Check if today is at least one day after the last attempt
+    const daysSinceLastAttempt = Math.round((today.getTime() - lastAttemptDay.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (daysDiff >= 1) {
-      // It's at least the next day, allow replay
+    if (daysSinceLastAttempt >= 1) {
+      // It's at least the next day since the last attempt, allow replay
       return { canReplay: true };
     } else {
-      // Still the same day as the game, calculate time until midnight
-      const now = new Date();
+      // Still the same day as the last attempt, calculate time until midnight
       const nextMidnight = new Date(today);
       nextMidnight.setDate(nextMidnight.getDate() + 1);
       nextMidnight.setHours(0, 0, 0, 0);
