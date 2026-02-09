@@ -80,11 +80,11 @@ export async function updateStatsAfterGame(
   const currentStreak = outcome === 'win' ? stats.currentStreak + 1 : 0;
   const maxStreak = Math.max(stats.maxStreak, currentStreak);
   await saveStats({ wins, currentStreak, maxStreak });
-  
+
   // Save to calendar history
   const date = gameDate || new Date().toISOString().split('T')[0];
   await saveGameToHistory(date, outcome);
-  
+
   return {
     played: playedCount,
     wins,
@@ -124,11 +124,11 @@ export async function saveGameToHistory(date: string, result: GameResult): Promi
 export async function hasPlayedCurrentPuzzle(): Promise<boolean> {
   try {
     const history = await getCalendarHistory();
-    
+
     // Get today's date
     const { getTodayDateString } = require('./dailyWord');
     const todayStr = getTodayDateString();
-    
+
     // Check if today's date exists in history
     return todayStr in history;
   } catch {
@@ -142,7 +142,7 @@ export async function hasPlayedCurrentPuzzle(): Promise<boolean> {
 export async function saveGuessesForDate(date: string, guesses: string[]): Promise<void> {
   const username = await getCurrentUser();
   if (!username) throw new Error('No user is set');
-  
+
   const key = `@wordle/guesses_${username}_${date}`;
   await AsyncStorage.setItem(key, JSON.stringify(guesses));
 }
@@ -154,11 +154,11 @@ export async function getGuessesForDate(date: string): Promise<string[] | null> 
   try {
     const username = await getCurrentUser();
     if (!username) return null;
-    
+
     const key = `@wordle/guesses_${username}_${date}`;
     const raw = await AsyncStorage.getItem(key);
     if (!raw) return null;
-    
+
     return JSON.parse(raw) as string[];
   } catch {
     return null;
@@ -184,7 +184,7 @@ export async function saveLostGameTimestamp(date: string): Promise<void> {
   try {
     const username = await getCurrentUser();
     if (!username) return;
-    
+
     const key = `@wordle/lost_timestamp_${username}_${date}`;
     const timestamp = new Date().getTime().toString();
     await AsyncStorage.setItem(key, timestamp);
@@ -195,36 +195,44 @@ export async function saveLostGameTimestamp(date: string): Promise<void> {
 
 /**
  * Check if a lost game can be replayed (must wait until next day/midnight)
+ * With the fake date system, this compares the game date to "today" (which may be fake)
  */
 export async function canReplayLostGame(date: string): Promise<{ canReplay: boolean; timeRemaining?: number }> {
   try {
     const username = await getCurrentUser();
     if (!username) return { canReplay: true };
-    
+
     const key = `@wordle/lost_timestamp_${username}_${date}`;
     const timestampStr = await AsyncStorage.getItem(key);
-    
+
     if (!timestampStr) {
       // No timestamp found, allow replay
       return { canReplay: true };
     }
-    
-    const lostTimestamp = parseInt(timestampStr, 10);
-    const lostDate = new Date(lostTimestamp);
-    const now = new Date();
-    
-    // Get midnight of the day after the lost date
-    const nextMidnight = new Date(lostDate);
-    nextMidnight.setDate(nextMidnight.getDate() + 1);
-    nextMidnight.setHours(0, 0, 0, 0);
-    
-    if (now >= nextMidnight) {
-      // It's past midnight of the next day, allow replay
+
+    // Get today's date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Parse the game date
+    const gameDate = new Date(date);
+    gameDate.setHours(0, 0, 0, 0);
+
+    // Check if today is at least one day after the game date
+    const daysDiff = Math.floor((today.getTime() - gameDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysDiff >= 1) {
+      // It's at least the next day, allow replay
       return { canReplay: true };
     } else {
-      // Still within the same day, calculate time remaining
+      // Still the same day as the game, calculate time until midnight
+      const now = new Date();
+      const nextMidnight = new Date(today);
+      nextMidnight.setDate(nextMidnight.getDate() + 1);
+      nextMidnight.setHours(0, 0, 0, 0);
+
       const timeRemaining = nextMidnight.getTime() - now.getTime();
-      return { canReplay: false, timeRemaining };
+      return { canReplay: false, timeRemaining: Math.max(0, timeRemaining) };
     }
   } catch {
     return { canReplay: true };

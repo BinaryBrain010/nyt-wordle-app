@@ -17,7 +17,7 @@ import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
 import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, type GameStats } from '../utils/stats';
-import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDailyWord, getTodayDateString, hasGameStarted } from '../utils/dailyWord';
+import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -111,15 +111,14 @@ export function HomeScreen({ navigation }: Props) {
         setPlayCount(count);
       });
       hasPlayedCurrentPuzzle().then(setHasPlayed);
-      
+
       // Check if game has started (Feb 15, 2026 or later)
       setGameStarted(hasGameStarted());
-      
+
       // Get today's date and puzzle info
       const todayStr = getTodayDateString();
       setTodayDateStr(todayStr);
-      const todayInfo = getTodayDailyWord();
-      setTodayPlayCount(todayInfo.dayIndex);
+      setTodayPlayCount(getPlayCountFromDate(todayStr));
     }, [])
   );
 
@@ -132,7 +131,7 @@ export function HomeScreen({ navigation }: Props) {
     const hours = Math.floor(ms / (1000 * 60 * 60));
     const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     } else if (minutes > 0) {
@@ -144,15 +143,15 @@ export function HomeScreen({ navigation }: Props) {
 
   const handleDatePress = async (dateStr: string, hasPlayed: boolean) => {
     setShowCalendarModal(false);
-    
+
     if (hasPlayed) {
       // User has played this puzzle - check if they won or lost
       const result = await getResultForDate(dateStr);
-      
+
       if (result === 'lose') {
         // Lost game - check if it can be replayed
         const { canReplay, timeRemaining } = await canReplayLostGame(dateStr);
-        
+
         if (canReplay) {
           // Allow replay
           navigation.navigate('Game', { dateToPlay: dateStr });
@@ -165,7 +164,7 @@ export function HomeScreen({ navigation }: Props) {
         // Won game - show the finished puzzle (locked)
         const guesses = await getGuessesForDate(dateStr);
         const dailyWord = getDailyWordForDate(dateStr);
-        
+
         if (guesses) {
           navigation.navigate('FinishedPuzzle', {
             outcome: 'win',
@@ -382,8 +381,8 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.closeIconText}>✕</Text>
               </Pressable>
             </View>
-            
-            <ScrollView 
+
+            <ScrollView
               style={styles.statsScrollView}
               showsVerticalScrollIndicator={false}
               bounces={false}
@@ -445,14 +444,14 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.closeIconText}>✕</Text>
               </Pressable>
             </View>
-            
-            <ScrollView 
+
+            <ScrollView
               style={styles.statsScrollView}
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
               <GameCalendar onDatePress={handleDatePress} />
-              
+
               <Pressable
                 style={({ pressed }) => [
                   styles.statsLinkButton,

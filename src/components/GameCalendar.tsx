@@ -30,7 +30,7 @@ type GameCalendarProps = {
 export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   const [history, setHistory] = useState<CalendarHistory>({});
   const [currentDate, setCurrentDate] = useState(new Date());
-  
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -66,7 +66,7 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   // Build calendar grid
   const weeks: (number | null)[][] = [];
   let currentWeek: (number | null)[] = [];
-  
+
   // Add empty cells for days before the first day of the month
   for (let i = 0; i < firstDay; i++) {
     currentWeek.push(null);
@@ -112,19 +112,19 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
       <View style={styles.calendarWrapper}>
         {/* Month Navigation */}
         <View style={styles.monthNav}>
-          <Pressable 
-            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]} 
+          <Pressable
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
             onPress={goToPrevMonth}
           >
             <Text style={styles.navButtonText}>‹</Text>
           </Pressable>
           <Text style={styles.monthTitle}>{MONTHS[month]} {year}</Text>
-          <Pressable 
+          <Pressable
             style={({ pressed }) => [
-              styles.navButton, 
+              styles.navButton,
               pressed && styles.navButtonPressed,
               isCurrentMonth && styles.navButtonDisabled
-            ]} 
+            ]}
             onPress={goToNextMonth}
             disabled={isCurrentMonth}
           >
@@ -162,8 +162,8 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
               const hasPlayed = !!result;
 
               return (
-                <Pressable 
-                  key={dayIndex} 
+                <Pressable
+                  key={dayIndex}
                   style={styles.dayCell}
                   onPress={() => isPastOrToday && onDatePress && onDatePress(dateStr, hasPlayed)}
                   disabled={isFuture || isBeforeStart || !onDatePress}

@@ -18,15 +18,15 @@ export type DailyWordInfo = {
 export function getDailyWord(playCount: number): DailyWordInfo {
   // Calculate which day in the cycle (0-4, then loops)
   const dayIndex = playCount % DAILY_WORDS.length;
-  
+
   // Get the word and puzzle number for this day
   const word = DAILY_WORDS[dayIndex];
   const puzzleNumber = PUZZLE_NUMBERS[dayIndex];
-  
+
   // Calculate the date: start from Feb 15, 2026 and add playCount days
   const date = new Date(START_DATE);
   date.setDate(date.getDate() + playCount);
-  
+
   return {
     word,
     puzzleNumber,
@@ -94,10 +94,10 @@ export function isDatePlayable(dateStr: string): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
-  
+
   const startDate = new Date(START_DATE);
   startDate.setHours(0, 0, 0, 0);
-  
+
   return date >= startDate && date <= today;
 }
 
@@ -107,9 +107,9 @@ export function isDatePlayable(dateStr: string): boolean {
 export function hasGameStarted(): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   const startDate = new Date(START_DATE);
   startDate.setHours(0, 0, 0, 0);
-  
+
   return today >= startDate;
 }
