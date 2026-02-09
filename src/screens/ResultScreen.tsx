@@ -19,6 +19,7 @@ import {
   incrementPlayCount,
   updateStatsAfterGame,
   saveGuessesForDate,
+  saveLostGameTimestamp,
   type GameStats
 } from '../utils/stats';
 import { getDailyWord } from '../utils/dailyWord';
@@ -230,6 +231,11 @@ export function ResultScreen({ navigation, route }: Props) {
       
       // Save the guesses for this date
       await saveGuessesForDate(gameDate, guesses);
+      
+      // If the user lost, save the timestamp for replay lock
+      if (outcome === 'lose') {
+        await saveLostGameTimestamp(gameDate);
+      }
       
       const playedCount = await incrementPlayCount();
       const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);

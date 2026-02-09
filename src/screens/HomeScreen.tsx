@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, type GameStats } from '../utils/stats';
+import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDailyWord, getTodayDateString, hasGameStarted } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
 
@@ -79,6 +79,8 @@ export function HomeScreen({ navigation }: Props) {
   const [todayDateStr, setTodayDateStr] = useState('');
   const [todayPlayCount, setTodayPlayCount] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
+  const [showLockedModal, setShowLockedModal] = useState(false);
+  const [lockedTimeRemaining, setLockedTimeRemaining] = useState(0);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -126,6 +128,20 @@ export function HomeScreen({ navigation }: Props) {
     navigation.reset({ index: 0, routes: [{ name: 'Username' }] });
   };
 
+  const formatTimeRemaining = (ms: number): string => {
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
+  };
+
   const handleDatePress = async (dateStr: string, hasPlayed: boolean) => {
     setShowCalendarModal(false);
     
@@ -134,8 +150,17 @@ export function HomeScreen({ navigation }: Props) {
       const result = await getResultForDate(dateStr);
       
       if (result === 'lose') {
-        // Lost game - allow replay
-        navigation.navigate('Game', { dateToPlay: dateStr });
+        // Lost game - check if it can be replayed
+        const { canReplay, timeRemaining } = await canReplayLostGame(dateStr);
+        
+        if (canReplay) {
+          // Allow replay
+          navigation.navigate('Game', { dateToPlay: dateStr });
+        } else {
+          // Show locked message with time remaining
+          setLockedTimeRemaining(timeRemaining || 0);
+          setShowLockedModal(true);
+        }
       } else {
         // Won game - show the finished puzzle (locked)
         const guesses = await getGuessesForDate(dateStr);
@@ -444,6 +469,37 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.statsLinkText}>Stats →</Text>
               </Pressable>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Locked Puzzle Modal */}
+      <Modal
+        visible={showLockedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLockedModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.lockedModalContent}>
+            <Text style={styles.lockedModalTitle}>🔒 Puzzle Locked</Text>
+            <Text style={styles.lockedModalMessage}>
+              You can retry this puzzle after midnight.
+            </Text>
+            {lockedTimeRemaining !== null && (
+              <Text style={styles.lockedModalTime}>
+                Time remaining: {formatTimeRemaining(lockedTimeRemaining)}
+              </Text>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.lockedModalButton,
+                pressed && styles.closeButtonPressed
+              ]}
+              onPress={() => setShowLockedModal(false)}
+            >
+              <Text style={styles.lockedModalButtonText}>OK</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -863,5 +919,64 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5
+  },
+  lockedModalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 32,
+    marginHorizontal: 24,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16
+      },
+      android: { elevation: 12 }
+    })
+  },
+  lockedModalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center'
+  },
+  lockedModalMessage: {
+    fontSize: 16,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+    opacity: 0.8
+  },
+  lockedModalTime: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.absent,
+    textAlign: 'center',
+    marginBottom: 24
+  },
+  lockedModalButton: {
+    backgroundColor: colors.button,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 999,
+    minWidth: 120,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8
+      },
+      android: { elevation: 3 }
+    })
+  },
+  lockedModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700'
   }
 });

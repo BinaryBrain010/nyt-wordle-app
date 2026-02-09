@@ -176,3 +176,57 @@ export async function getResultForDate(date: string): Promise<GameResult | null>
     return null;
   }
 }
+
+/**
+ * Save the timestamp when a game was played for a specific date
+ */
+export async function saveLostGameTimestamp(date: string): Promise<void> {
+  try {
+    const username = await getCurrentUser();
+    if (!username) return;
+    
+    const key = `@wordle/lost_timestamp_${username}_${date}`;
+    const timestamp = new Date().getTime().toString();
+    await AsyncStorage.setItem(key, timestamp);
+  } catch {
+    // Ignore errors
+  }
+}
+
+/**
+ * Check if a lost game can be replayed (must wait until next day/midnight)
+ */
+export async function canReplayLostGame(date: string): Promise<{ canReplay: boolean; timeRemaining?: number }> {
+  try {
+    const username = await getCurrentUser();
+    if (!username) return { canReplay: true };
+    
+    const key = `@wordle/lost_timestamp_${username}_${date}`;
+    const timestampStr = await AsyncStorage.getItem(key);
+    
+    if (!timestampStr) {
+      // No timestamp found, allow replay
+      return { canReplay: true };
+    }
+    
+    const lostTimestamp = parseInt(timestampStr, 10);
+    const lostDate = new Date(lostTimestamp);
+    const now = new Date();
+    
+    // Get midnight of the day after the lost date
+    const nextMidnight = new Date(lostDate);
+    nextMidnight.setDate(nextMidnight.getDate() + 1);
+    nextMidnight.setHours(0, 0, 0, 0);
+    
+    if (now >= nextMidnight) {
+      // It's past midnight of the next day, allow replay
+      return { canReplay: true };
+    } else {
+      // Still within the same day, calculate time remaining
+      const timeRemaining = nextMidnight.getTime() - now.getTime();
+      return { canReplay: false, timeRemaining };
+    }
+  } catch {
+    return { canReplay: true };
+  }
+}

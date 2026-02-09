@@ -3,7 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { CalendarHistory, getCalendarHistory } from '../utils/stats';
 
-const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
+const START_DATE = new Date(2026, 1, 9); // Feb 9, 2026 (month is 0-indexed)
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
