@@ -3,6 +3,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { CalendarHistory, getCalendarHistory } from '../utils/stats';
 
+const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
+
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -21,7 +23,11 @@ function formatDate(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-export function GameCalendar() {
+type GameCalendarProps = {
+  onDatePress?: (dateStr: string, hasPlayed: boolean) => void;
+};
+
+export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   const [history, setHistory] = useState<CalendarHistory>({});
   const [currentDate, setCurrentDate] = useState(new Date());
   
@@ -146,16 +152,29 @@ export function GameCalendar() {
               const dateStr = formatDate(year, month, day);
               const result = history[dateStr];
               const isToday = dateStr === todayStr;
-              const isFuture = new Date(year, month, day) > today;
+              const currentDate = new Date(year, month, day);
+              currentDate.setHours(0, 0, 0, 0);
+              const isFuture = currentDate > today;
+              const startDateNormalized = new Date(START_DATE);
+              startDateNormalized.setHours(0, 0, 0, 0);
+              const isBeforeStart = currentDate < startDateNormalized;
+              const isPastOrToday = !isFuture && !isBeforeStart;
+              const hasPlayed = !!result;
 
               return (
-                <View key={dayIndex} style={styles.dayCell}>
+                <Pressable 
+                  key={dayIndex} 
+                  style={styles.dayCell}
+                  onPress={() => isPastOrToday && onDatePress && onDatePress(dateStr, hasPlayed)}
+                  disabled={isFuture || isBeforeStart || !onDatePress}
+                >
                   <View
                     style={[
                       styles.dayContent,
                       result === 'win' && styles.winDay,
                       result === 'lose' && styles.loseDay,
-                      isToday && !result && styles.todayDay
+                      isToday && !result && styles.todayDay,
+                      isPastOrToday && onDatePress && styles.clickableDay
                     ]}
                   >
                     <Text
@@ -163,7 +182,7 @@ export function GameCalendar() {
                         styles.dayText,
                         result === 'win' && styles.winDayText,
                         result === 'lose' && styles.loseDayText,
-                        isFuture && styles.futureText,
+                        (isFuture || isBeforeStart) && styles.futureText,
                         isToday && !result && styles.todayText
                       ]}
                     >
@@ -178,7 +197,7 @@ export function GameCalendar() {
                       </Text>
                     )}
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -306,6 +325,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8
+  },
+  clickableDay: {
+    opacity: 0.9
   },
   winDay: {
     backgroundColor: colors.correct

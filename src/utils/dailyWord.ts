@@ -50,3 +50,66 @@ export function getPuzzleNumberString(playCount: number): string {
   const { puzzleNumber } = getDailyWord(playCount);
   return `No. ${String(puzzleNumber).padStart(4, '0')}`;
 }
+
+/**
+ * Calculate the play count from a date string
+ * Returns the number of days between START_DATE and the given date
+ */
+export function getPlayCountFromDate(dateStr: string): number {
+  const targetDate = new Date(dateStr);
+  const timeDiff = targetDate.getTime() - START_DATE.getTime();
+  const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+  return Math.max(0, daysDiff);
+}
+
+/**
+ * Get the daily word and puzzle info for a specific date
+ */
+export function getDailyWordForDate(dateStr: string): DailyWordInfo {
+  const playCount = getPlayCountFromDate(dateStr);
+  return getDailyWord(playCount);
+}
+
+/**
+ * Get today's date as a YYYY-MM-DD string
+ */
+export function getTodayDateString(): string {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+}
+
+/**
+ * Get today's daily word info
+ */
+export function getTodayDailyWord(): DailyWordInfo {
+  const todayStr = getTodayDateString();
+  return getDailyWordForDate(todayStr);
+}
+
+/**
+ * Check if a date is playable (not in the future and not before start date)
+ */
+export function isDatePlayable(dateStr: string): boolean {
+  const date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  
+  const startDate = new Date(START_DATE);
+  startDate.setHours(0, 0, 0, 0);
+  
+  return date >= startDate && date <= today;
+}
+
+/**
+ * Check if the game has started (current date is on or after Feb 15, 2026)
+ */
+export function hasGameStarted(): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const startDate = new Date(START_DATE);
+  startDate.setHours(0, 0, 0, 0);
+  
+  return today >= startDate;
+}

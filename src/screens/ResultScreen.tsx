@@ -18,6 +18,7 @@ import {
   getPlayCount,
   incrementPlayCount,
   updateStatsAfterGame,
+  saveGuessesForDate,
   type GameStats
 } from '../utils/stats';
 import { getDailyWord } from '../utils/dailyWord';
@@ -203,7 +204,7 @@ function Confetti() {
 }
 
 export function ResultScreen({ navigation, route }: Props) {
-  const { outcome, guessesUsed, guesses, solution, fromFinishedPuzzle } = route.params;
+  const { outcome, guessesUsed, guesses, solution, fromFinishedPuzzle, gameDate: routeGameDate } = route.params;
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [stats, setStats] = useState<GameStats | null>(null);
@@ -217,16 +218,24 @@ export function ResultScreen({ navigation, route }: Props) {
     if (updated.current) return;
     updated.current = true;
     (async () => {
-      // Get the current play count to determine the game date
-      const currentPlayCount = await getPlayCount();
-      const dailyWord = getDailyWord(currentPlayCount);
-      const gameDate = dailyWord.date.toISOString().split('T')[0];
+      // Use gameDate from route if provided, otherwise calculate from current play count
+      let gameDate: string;
+      if (routeGameDate) {
+        gameDate = routeGameDate;
+      } else {
+        const currentPlayCount = await getPlayCount();
+        const dailyWord = getDailyWord(currentPlayCount);
+        gameDate = dailyWord.date.toISOString().split('T')[0];
+      }
+      
+      // Save the guesses for this date
+      await saveGuessesForDate(gameDate, guesses);
       
       const playedCount = await incrementPlayCount();
       const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);
       setStats(fullStats);
     })();
-  }, [outcome, fromFinishedPuzzle]);
+  }, [outcome, fromFinishedPuzzle, guesses, routeGameDate]);
 
   const title = useMemo(() => {
     if (outcome === 'win') return 'Congratulations!';
@@ -266,22 +275,13 @@ export function ResultScreen({ navigation, route }: Props) {
         <Pressable
           style={styles.backRow}
           onPress={() => {
-            if (outcome === 'lose') {
-              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-            } else {
-              navigation.replace('FinishedPuzzle', {
-                outcome,
-                guessesUsed,
-                guesses,
-                solution
-              });
-            }
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           }}
-          accessibilityLabel={outcome === 'lose' ? 'Back to home' : 'Back to puzzle'}
+          accessibilityLabel="Back to home"
           accessibilityRole="button"
         >
           <Text style={[styles.backText, { fontSize: width < 360 ? 14 : 16 }]}>
-            {outcome === 'lose' ? 'Back to home' : 'Back to puzzle'}
+            Back to home
           </Text>
           <Text style={styles.backX}>✕</Text>
         </Pressable>

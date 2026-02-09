@@ -16,8 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount, getFullStats, type GameStats } from '../utils/stats';
-import { getDisplayDate, getPuzzleNumberString } from '../utils/dailyWord';
+import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, type GameStats } from '../utils/stats';
+import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDailyWord, getTodayDateString, hasGameStarted } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -75,6 +75,10 @@ export function HomeScreen({ navigation }: Props) {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [statsOpenedFrom, setStatsOpenedFrom] = useState<'profile' | 'calendar'>('profile');
+  const [hasPlayed, setHasPlayed] = useState(false);
+  const [todayDateStr, setTodayDateStr] = useState('');
+  const [todayPlayCount, setTodayPlayCount] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -104,6 +108,16 @@ export function HomeScreen({ navigation }: Props) {
       getPlayCount().then((count) => {
         setPlayCount(count);
       });
+      hasPlayedCurrentPuzzle().then(setHasPlayed);
+      
+      // Check if game has started (Feb 15, 2026 or later)
+      setGameStarted(hasGameStarted());
+      
+      // Get today's date and puzzle info
+      const todayStr = getTodayDateString();
+      setTodayDateStr(todayStr);
+      const todayInfo = getTodayDailyWord();
+      setTodayPlayCount(todayInfo.dayIndex);
     }, [])
   );
 
@@ -112,8 +126,33 @@ export function HomeScreen({ navigation }: Props) {
     navigation.reset({ index: 0, routes: [{ name: 'Username' }] });
   };
 
-  const displayDate = getDisplayDate(playCount);
-  const puzzleNumStr = getPuzzleNumberString(playCount);
+  const handleDatePress = async (dateStr: string, hasPlayed: boolean) => {
+    setShowCalendarModal(false);
+    
+    if (hasPlayed) {
+      // User has played this puzzle - show the finished puzzle
+      const guesses = await getGuessesForDate(dateStr);
+      const dailyWord = getDailyWordForDate(dateStr);
+      const history = await getFullStats();
+      
+      if (guesses) {
+        const outcome = guesses[guesses.length - 1].toUpperCase() === dailyWord.word.toUpperCase() ? 'win' : 'lose';
+        navigation.navigate('FinishedPuzzle', {
+          outcome,
+          guessesUsed: guesses.length,
+          guesses,
+          solution: dailyWord.word
+        });
+      }
+    } else {
+      // User hasn't played this puzzle - let them play it
+      navigation.navigate('Game', { dateToPlay: dateStr });
+    }
+  };
+
+  // Display today's puzzle info
+  const displayDate = todayDateStr ? getDisplayDate(todayPlayCount) : '';
+  const puzzleNumStr = todayDateStr ? getPuzzleNumberString(todayPlayCount) : '';
 
   return (
     <View
@@ -189,11 +228,15 @@ export function HomeScreen({ navigation }: Props) {
           style={({ pressed }) => [
             styles.playButton,
             { paddingVertical: responsive.playPaddingV, paddingHorizontal: responsive.playPaddingH },
-            pressed && styles.playButtonPressed
+            (!gameStarted || hasPlayed) && styles.playButtonDisabled,
+            pressed && gameStarted && !hasPlayed && styles.playButtonPressed
           ]}
-          onPress={() => navigation.navigate('Game')}
+          onPress={() => gameStarted && !hasPlayed && navigation.navigate('Game', { dateToPlay: todayDateStr })}
+          disabled={!gameStarted || hasPlayed}
         >
-          <Text style={styles.playButtonText}>Play</Text>
+          <Text style={[styles.playButtonText, (!gameStarted || hasPlayed) && styles.playButtonTextDisabled]}>
+            {!gameStarted ? 'Coming Feb 15' : hasPlayed ? 'Already Played' : 'Play'}
+          </Text>
         </Pressable>
 
         <View style={styles.meta}>
@@ -315,7 +358,7 @@ export function HomeScreen({ navigation }: Props) {
               bounces={false}
             >
               {/* Calendar Section */}
-              <GameCalendar />
+              <GameCalendar onDatePress={handleDatePress} />
 
               {/* Stats Grid */}
               {stats && (
@@ -377,7 +420,7 @@ export function HomeScreen({ navigation }: Props) {
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              <GameCalendar />
+              <GameCalendar onDatePress={handleDatePress} />
               
               <Pressable
                 style={({ pressed }) => [
@@ -464,11 +507,18 @@ const styles = StyleSheet.create({
   playButtonPressed: {
     opacity: 0.88
   },
+  playButtonDisabled: {
+    backgroundColor: colors.tileBorder,
+    opacity: 0.6
+  },
   playButtonText: {
     color: colors.buttonText,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5
+  },
+  playButtonTextDisabled: {
+    color: colors.mutedText
   },
   meta: {
     alignItems: 'center',

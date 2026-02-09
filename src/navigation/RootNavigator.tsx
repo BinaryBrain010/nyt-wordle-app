@@ -13,13 +13,14 @@ import { colors } from '../theme/colors';
 export type RootStackParamList = {
   Username: undefined;
   Home: undefined;
-  Game: undefined;
+  Game: { dateToPlay?: string } | undefined;
   Result: {
     outcome: 'win' | 'lose';
     guessesUsed: number;
     guesses?: string[];
     solution?: string;
     fromFinishedPuzzle?: boolean;
+    gameDate?: string;
   };
   FinishedPuzzle: {
     outcome: 'win' | 'lose';

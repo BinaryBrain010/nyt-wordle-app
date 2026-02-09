@@ -116,3 +116,51 @@ export async function saveGameToHistory(date: string, result: GameResult): Promi
   history[date] = result;
   await AsyncStorage.setItem(historyKey, JSON.stringify(history));
 }
+
+/**
+ * Check if today's puzzle has been played
+ * Returns true if the user has already played the puzzle for today's date
+ */
+export async function hasPlayedCurrentPuzzle(): Promise<boolean> {
+  try {
+    const history = await getCalendarHistory();
+    
+    // Get today's date
+    const { getTodayDateString } = require('./dailyWord');
+    const todayStr = getTodayDateString();
+    
+    // Check if today's date exists in history
+    return todayStr in history;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Save guesses for a specific date
+ */
+export async function saveGuessesForDate(date: string, guesses: string[]): Promise<void> {
+  const username = await getCurrentUser();
+  if (!username) throw new Error('No user is set');
+  
+  const key = `@wordle/guesses_${username}_${date}`;
+  await AsyncStorage.setItem(key, JSON.stringify(guesses));
+}
+
+/**
+ * Get guesses for a specific date
+ */
+export async function getGuessesForDate(date: string): Promise<string[] | null> {
+  try {
+    const username = await getCurrentUser();
+    if (!username) return null;
+    
+    const key = `@wordle/guesses_${username}_${date}`;
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return null;
+    
+    return JSON.parse(raw) as string[];
+  } catch {
+    return null;
+  }
+}
