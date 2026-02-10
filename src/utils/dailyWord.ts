@@ -1,4 +1,4 @@
-
+import { getCurrentDate, getTodayString } from './fakeDate';
 
 const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
 
@@ -83,14 +83,11 @@ export function getDailyWordForDate(dateStr: string): DailyWordInfo {
 }
 
 /**
- * Get today's date as a YYYY-MM-DD string in local time
+ * Get today's date as a YYYY-MM-DD string
+ * Uses the fake date system for testing
  */
 export function getTodayDateString(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return getTodayString();
 }
 
 /**
@@ -103,10 +100,11 @@ export function getTodayDailyWord(): DailyWordInfo {
 
 /**
  * Check if a date is playable (not in the future and not before start date)
+ * Uses the fake date system for testing
  */
 export function isDatePlayable(dateStr: string): boolean {
   const date = new Date(dateStr);
-  const today = new Date();
+  const today = getCurrentDate();
   today.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
 
@@ -118,9 +116,10 @@ export function isDatePlayable(dateStr: string): boolean {
 
 /**
  * Check if the game has started (current date is on or after Feb 15, 2026)
+ * Uses the fake date system for testing
  */
 export function hasGameStarted(): boolean {
-  const today = new Date();
+  const today = getCurrentDate();
   today.setHours(0, 0, 0, 0);
 
   const startDate = new Date(START_DATE);

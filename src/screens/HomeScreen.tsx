@@ -16,9 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, type GameStats } from '../utils/stats';
+import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, isDateAlreadyPlayed, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
+import { isFakeDateEnabled, getFakeDateValue } from '../utils/fakeDate';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -81,6 +82,9 @@ export function HomeScreen({ navigation }: Props) {
   const [gameStarted, setGameStarted] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [lockedTimeRemaining, setLockedTimeRemaining] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0); // For forcing re-fetch in dev mode
+  const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
+  const [isReplay, setIsReplay] = useState(false);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -106,20 +110,41 @@ export function HomeScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
+      console.log('[HOME] Refreshing game state... Key:', refreshKey);
       getCurrentUser().then(setCurrentUsername);
       getPlayCount().then((count) => {
         setPlayCount(count);
       });
-      hasPlayedCurrentPuzzle().then(setHasPlayed);
+      const realTodayStr = getTodayDateString();
+      const activeDateStr = selectedDateStr || realTodayStr;
 
-      // Check if game has started (Feb 15, 2026 or later)
+      setTodayDateStr(activeDateStr);
+
+      const checkPlayState = async () => {
+        const alreadyPlayed = await isDateAlreadyPlayed(activeDateStr);
+        const result = await getResultForDate(activeDateStr);
+        let treatAsUnplayed = !alreadyPlayed;
+        let replaying = false;
+
+        if (alreadyPlayed && result === 'lose') {
+          const { canReplay } = await canReplayLostGame(activeDateStr);
+          if (replaying = canReplay) {
+            treatAsUnplayed = true; // Allow Play button to show
+          }
+        }
+
+        setHasPlayed(!treatAsUnplayed);
+        setIsReplay(replaying);
+      };
+
+      checkPlayState();
+
+      // Check if game has started for the active date
       setGameStarted(hasGameStarted());
 
-      // Get today's date and puzzle info
-      const todayStr = getTodayDateString();
-      setTodayDateStr(todayStr);
-      setTodayPlayCount(getPlayCountFromDate(todayStr));
-    }, [])
+      const playCountNum = getPlayCountFromDate(activeDateStr);
+      setTodayPlayCount(playCountNum);
+    }, [refreshKey, selectedDateStr])
   );
 
   const handleSwitchUser = async () => {
@@ -153,8 +178,8 @@ export function HomeScreen({ navigation }: Props) {
         const { canReplay, timeRemaining } = await canReplayLostGame(dateStr);
 
         if (canReplay) {
-          // Allow replay
-          navigation.navigate('Game', { dateToPlay: dateStr });
+          // Allow replay on HomeScreen
+          setSelectedDateStr(dateStr);
         } else {
           // Show locked message with time remaining
           setLockedTimeRemaining(timeRemaining || 0);
@@ -175,8 +200,8 @@ export function HomeScreen({ navigation }: Props) {
         }
       }
     } else {
-      // User hasn't played this puzzle - let them play it
-      navigation.navigate('Game', { dateToPlay: dateStr });
+      // User hasn't played this puzzle - let them play it on HomeScreen
+      setSelectedDateStr(dateStr);
     }
   };
 
@@ -265,15 +290,40 @@ export function HomeScreen({ navigation }: Props) {
           disabled={!gameStarted || hasPlayed}
         >
           <Text style={[styles.playButtonText, (!gameStarted || hasPlayed) && styles.playButtonTextDisabled]}>
-            {!gameStarted ? 'Coming Feb 15' : hasPlayed ? 'Already Played' : 'Play'}
+            {!gameStarted ? 'Coming Feb 15' : isReplay ? 'Replay' : hasPlayed ? 'Already Played' : 'Play'}
           </Text>
         </Pressable>
+
+        {selectedDateStr && (
+          <Pressable
+            style={styles.backToTodayButton}
+            onPress={() => setSelectedDateStr(null)}
+          >
+            <Text style={styles.backToTodayText}>↩ Back to Today</Text>
+          </Pressable>
+        )}
 
         <View style={styles.meta}>
           <Text style={[styles.metaPrimary, { fontSize: responsive.metaSize }]}>{displayDate}</Text>
           <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
           <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
         </View>
+
+        {/* Dev Mode: Fake Date Indicator */}
+        {isFakeDateEnabled() && (
+          <View style={styles.devBanner}>
+            <Text style={styles.devBannerText}>🧪 DEV MODE: Fake Date</Text>
+            <Text style={styles.devBannerDate}>{getFakeDateValue()}</Text>
+            <Text style={styles.devBannerHint}>Edit src/utils/fakeDate.ts to change</Text>
+
+            <Pressable
+              style={styles.refreshButton}
+              onPress={() => setRefreshKey(prev => prev + 1)}
+            >
+              <Text style={styles.refreshButtonText}>🔄 Force Refresh</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {/* Profile Modal */}
@@ -977,5 +1027,60 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700'
+  },
+  devBanner: {
+    marginTop: 24,
+    backgroundColor: '#FFF3CD',
+    borderWidth: 1,
+    borderColor: '#FFECB5',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center'
+  },
+  devBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#856404',
+    marginBottom: 4
+  },
+  devBannerDate: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#664D03',
+    marginBottom: 4
+  },
+  devBannerHint: {
+    fontSize: 10,
+    color: '#997404',
+    fontStyle: 'italic'
+  },
+  refreshButton: {
+    marginTop: 10,
+    backgroundColor: colors.present,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.correct
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF'
+  },
+  backToTodayButton: {
+    marginTop: -8,
+    marginBottom: 20,
+    backgroundColor: colors.tileEmpty,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+  },
+  backToTodayText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   }
 });

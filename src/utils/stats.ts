@@ -1,11 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCurrentUser } from './users';
-
-// Helper to get local date string YYYY-MM-DD
-function getTodayStringLocal(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+import { getCurrentDate, getCurrentTimestamp, getTodayString } from './fakeDate';
 
 export type GameStats = {
   played: number;
@@ -88,7 +83,7 @@ export async function updateStatsAfterGame(
   await saveStats({ wins, currentStreak, maxStreak });
 
   // Save to calendar history
-  const date = gameDate || getTodayStringLocal();
+  const date = gameDate || getTodayString();
   await saveGameToHistory(date, outcome);
 
   return {
@@ -132,8 +127,8 @@ export async function hasPlayedCurrentPuzzle(): Promise<boolean> {
   try {
     const history = await getCalendarHistory();
 
-    // Get today's date
-    const todayStr = getTodayStringLocal();
+    // Get today's date (uses fake date if enabled)
+    const todayStr = getTodayString();
 
     // Check if today's date exists in history
     return todayStr in history;
@@ -192,7 +187,7 @@ export async function saveLostGameTimestamp(date: string): Promise<void> {
     if (!username) return;
 
     const key = `@wordle/lost_timestamp_${username}_${date}`;
-    const timestamp = new Date().getTime().toString();
+    const timestamp = getCurrentTimestamp().toString();
     await AsyncStorage.setItem(key, timestamp);
   } catch {
     // Ignore errors
@@ -253,8 +248,8 @@ export async function canReplayLostGame(date: string): Promise<{ canReplay: bool
       return { canReplay: true };
     }
 
-    // Get today's date
-    const now = new Date();
+    // Get today's date (uses fake date if enabled)
+    const now = getCurrentDate();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     // Parse the timestamp of the last loss

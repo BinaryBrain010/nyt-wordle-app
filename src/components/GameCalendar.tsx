@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { CalendarHistory, getCalendarHistory, canReplayLostGame } from '../utils/stats';
+import { getCurrentDate } from '../utils/fakeDate';
 
 const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
 
@@ -61,7 +62,7 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   };
 
   const goToNextMonth = () => {
-    const today = new Date();
+    const today = getCurrentDate();
     const nextMonth = new Date(year, month + 1, 1);
     // Don't go beyond current month
     if (nextMonth <= new Date(today.getFullYear(), today.getMonth() + 1, 0)) {
@@ -69,7 +70,7 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
     }
   };
 
-  const today = new Date();
+  const today = getCurrentDate();
   const todayStr = formatDate(today.getFullYear(), today.getMonth(), today.getDate());
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
 
@@ -108,25 +109,25 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
         <Text style={styles.title}>📅 Game History</Text>
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.correct }]}>
+            <View style={[styles.legendDot, styles.winDay, styles.legendDotShadow]}>
               <Text style={styles.legendMark}>✓</Text>
             </View>
             <Text style={styles.legendText}>Win</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.loseCross }]}>
-              <Text style={[styles.legendMark, { color: colors.text }]}>✗</Text>
+            <View style={[styles.legendDot, styles.loseDay, styles.legendDotShadow]}>
+              <Text style={styles.legendMark}>✗</Text>
             </View>
             <Text style={styles.legendText}>Loss</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, styles.replayableDot]}>
-              <Text style={styles.legendMark}>🔄</Text>
+            <View style={[styles.legendDot, styles.replayableDay, styles.legendDotShadow]}>
+              <Text style={[styles.legendMark, { fontSize: 9 }]}>🔄</Text>
             </View>
             <Text style={styles.legendText}>Retry</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { borderColor: colors.tileBorder, borderWidth: 1 }]} />
+            <View style={[styles.legendDot, styles.missedDay, { backgroundColor: '#FAFAFA' }]} />
             <Text style={styles.legendText}>Missed</Text>
           </View>
         </View>
@@ -245,21 +246,25 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 12
+    marginBottom: 16,
+    letterSpacing: -0.5
   },
   legend: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 24
+    paddingHorizontal: 10,
+    rowGap: 12,
+    columnGap: 16
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8
+    gap: 6
   },
   legendDot: {
     width: 24,
@@ -270,13 +275,25 @@ const styles = StyleSheet.create({
   },
   legendMark: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700'
+    fontSize: 10,
+    fontWeight: '800'
   },
   legendText: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.text,
-    fontWeight: '500'
+    fontWeight: '600',
+    letterSpacing: -0.2
+  },
+  legendDotShadow: {
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2
+      },
+      android: { elevation: 1 }
+    })
   },
   calendarWrapper: {
     backgroundColor: colors.tileEmpty,
@@ -327,9 +344,10 @@ const styles = StyleSheet.create({
     color: colors.mutedText
   },
   monthTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.3
   },
   weekRow: {
     flexDirection: 'row'
