@@ -122,7 +122,7 @@ export function getTodayDailyWord(): DailyWordInfo {
     return {
       word: '',
       puzzleNumber: 0,
-      date: new Date(),
+      date: getCurrentDate(),
       dayIndex: -1
     };
   }

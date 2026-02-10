@@ -5,10 +5,34 @@
  */
 
 /**
- * Get the current date
+ * Get the current date in Pacific Time (America/Los_Angeles)
  */
 export function getCurrentDate(): Date {
-    return new Date();
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Los_Angeles',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+    });
+
+    const parts = formatter.formatToParts(now);
+    const p: any = {};
+    parts.forEach(({ type, value }) => { p[type] = value; });
+
+    // Return a Date object where the local components match the PT values
+    return new Date(
+        parseInt(p.year),
+        parseInt(p.month) - 1,
+        parseInt(p.day),
+        parseInt(p.hour),
+        parseInt(p.minute),
+        parseInt(p.second)
+    );
 }
 
 /**

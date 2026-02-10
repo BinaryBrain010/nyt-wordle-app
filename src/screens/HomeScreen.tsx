@@ -19,6 +19,7 @@ import { getCurrentUser, clearCurrentUser } from '../utils/users';
 import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, isDateAlreadyPlayed, getCompetitionStatus, saveReplayLink, getReplayLink, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate, TOTAL_ORIGINAL_DAYS, getDateStrFromOffset } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
+import { Confetti } from '../components/Confetti';
 
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -291,6 +292,7 @@ export function HomeScreen({ navigation }: Props) {
         }
       ]}
     >
+      {isCompetitionComplete && <Confetti />}
       {/* Top Left - Calendar Button */}
       <Pressable
         style={[
@@ -337,22 +339,27 @@ export function HomeScreen({ navigation }: Props) {
         <View style={styles.titleRow}>
           <Text style={[styles.title, { fontSize: responsive.titleSize }]}>Wordle</Text>
         </View>
-        <Text
+        <View
           style={[
-            styles.subtitle,
+            styles.subtitleContainer,
             {
-              fontSize: responsive.subtitleSize,
-              lineHeight: responsive.subtitleLineHeight,
               maxWidth: responsive.subtitleMaxWidth
             }
           ]}
         >
-          {isCompetitionComplete
-            ? "Congratulations. You've guessed all plays correctly."
-            : isReplay && replayOriginalDate
-              ? `Retrying puzzle from ${getDisplayDate(getPlayCountFromDate(replayOriginalDate))}`
-              : "Get 6 chances to guess a 5-letter word."}
-        </Text>
+          {isCompetitionComplete ? (
+            <View style={styles.completionContainer}>
+              <Text style={styles.completionTitle}>🏆 Masterpiece!</Text>
+              <Text style={styles.completionSub}>You've completed all Wordle puzzles.</Text>
+            </View>
+          ) : (
+            <Text style={[styles.subtitle, { fontSize: responsive.subtitleSize, lineHeight: responsive.subtitleLineHeight }]}>
+              {isReplay && replayOriginalDate
+                ? `Retrying puzzle from ${getDisplayDate(getPlayCountFromDate(replayOriginalDate))}`
+                : "Get 6 chances to guess a 5-letter word."}
+            </Text>
+          )}
+        </View>
 
         <Pressable
           style={({ pressed }) => [
@@ -648,15 +655,39 @@ const styles = StyleSheet.create({
     letterSpacing: -1.2,
     ...(Platform.OS === 'ios' && { fontVariant: ['tabular-nums'] })
   },
+  subtitleContainer: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
   subtitle: {
     fontSize: 18,
     lineHeight: 26,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 28,
     letterSpacing: 0.2,
     opacity: 0.92,
-    maxWidth: 280
+  },
+  completionContainer: {
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: '#F8F9FA',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    marginBottom: 20
+  },
+  completionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.correct,
+    marginBottom: 4,
+  },
+  completionSub: {
+    fontSize: 14,
+    color: colors.text,
+    opacity: 0.8,
+    textAlign: 'center'
   },
   playButton: {
     backgroundColor: colors.button,

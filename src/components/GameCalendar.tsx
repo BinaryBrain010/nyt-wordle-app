@@ -31,7 +31,7 @@ type GameCalendarProps = {
 
 export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   const [history, setHistory] = useState<CalendarHistory>({});
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(getCurrentDate());
   const [replayableDates, setReplayableDates] = useState<Set<string>>(new Set());
   const [replayLinks, setReplayLinks] = useState<Record<string, string>>({});
 
