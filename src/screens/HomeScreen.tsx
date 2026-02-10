@@ -16,8 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, isDateAlreadyPlayed, type GameStats } from '../utils/stats';
-import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate } from '../utils/dailyWord';
+import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, isDateAlreadyPlayed, getCompetitionStatus, saveReplayLink, getReplayLink, type GameStats } from '../utils/stats';
+import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate, TOTAL_ORIGINAL_DAYS, getDateStrFromOffset } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
 import { isFakeDateEnabled, getFakeDateValue } from '../utils/fakeDate';
 
@@ -85,6 +85,8 @@ export function HomeScreen({ navigation }: Props) {
   const [refreshKey, setRefreshKey] = useState(0); // For forcing re-fetch in dev mode
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [isReplay, setIsReplay] = useState(false);
+  const [isCompetitionComplete, setIsCompetitionComplete] = useState(false);
+  const [replayOriginalDate, setReplayOriginalDate] = useState<string | null>(null);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -121,6 +123,61 @@ export function HomeScreen({ navigation }: Props) {
       setTodayDateStr(activeDateStr);
 
       const checkPlayState = async () => {
+        const playCountNum = getPlayCountFromDate(activeDateStr);
+        setTodayPlayCount(playCountNum);
+
+        // Check competition status for Feb 20+
+        if (playCountNum >= TOTAL_ORIGINAL_DAYS) {
+          const status = await getCompetitionStatus();
+
+          if (status.isCompleted) {
+            // Requirement 2a: All won -> Congratulations
+            setIsCompetitionComplete(true);
+            setHasPlayed(true); // Disable Play button
+            setIsReplay(false);
+            setReplayOriginalDate(null);
+            return;
+          } else {
+            // Requirement 2b: Some lost -> Replay them
+            setIsCompetitionComplete(false);
+
+            // If it's today (not a selected history date), assign the first incomplete
+            // If it's a history date, we should retrieve what was linked to it
+            let targetDate = await getReplayLink(activeDateStr);
+
+            if (!targetDate && activeDateStr === realTodayStr) {
+              // New replay day! Assign first incomplete
+              targetDate = getDateStrFromOffset(status.firstIncompleteOffset!);
+              await saveReplayLink(activeDateStr, targetDate);
+            }
+
+            if (targetDate) {
+              setReplayOriginalDate(targetDate);
+              // Check if today (the replay date) has already been played
+              const alreadyPlayedToday = await isDateAlreadyPlayed(activeDateStr);
+              const resultToday = await getResultForDate(activeDateStr);
+
+              if (alreadyPlayedToday && resultToday === 'lose') {
+                // Replay date is locked red for today
+                setHasPlayed(true);
+                setIsReplay(false);
+              } else if (alreadyPlayedToday && resultToday === 'win') {
+                // Replay successful!
+                setHasPlayed(true);
+                setIsReplay(false);
+              } else {
+                // Ready to play/replay
+                setHasPlayed(false);
+                setIsReplay(true);
+              }
+              return;
+            }
+          }
+        }
+
+        // Standard logic for days 0-4
+        setIsCompetitionComplete(false);
+        setReplayOriginalDate(null);
         const alreadyPlayed = await isDateAlreadyPlayed(activeDateStr);
         const result = await getResultForDate(activeDateStr);
         let treatAsUnplayed = !alreadyPlayed;
@@ -141,9 +198,6 @@ export function HomeScreen({ navigation }: Props) {
 
       // Check if game has started for the active date
       setGameStarted(hasGameStarted());
-
-      const playCountNum = getPlayCountFromDate(activeDateStr);
-      setTodayPlayCount(playCountNum);
     }, [refreshKey, selectedDateStr])
   );
 
@@ -188,9 +242,13 @@ export function HomeScreen({ navigation }: Props) {
       } else {
         // Won game - show the finished puzzle (locked)
         const guesses = await getGuessesForDate(dateStr);
-        const dailyWord = getDailyWordForDate(dateStr);
 
-        if (guesses) {
+        // Find effective date (handle replay dates Feb 20+)
+        const originalDateLink = await getReplayLink(dateStr);
+        const effectiveDate = originalDateLink || dateStr;
+        const dailyWord = getDailyWordForDate(effectiveDate);
+
+        if (guesses && dailyWord) {
           navigation.navigate('FinishedPuzzle', {
             outcome: 'win',
             guessesUsed: guesses.length,
@@ -207,7 +265,22 @@ export function HomeScreen({ navigation }: Props) {
 
   // Display today's puzzle info
   const displayDate = todayDateStr ? getDisplayDate(todayPlayCount) : '';
-  const puzzleNumStr = todayDateStr ? getPuzzleNumberString(todayPlayCount) : '';
+  const puzzleNumStr = useMemo(() => {
+    if (!todayDateStr) return '';
+    // If we're replaying a specific original date, show its puzzle number
+    if (isReplay && replayOriginalDate) {
+      return getPuzzleNumberString(getPlayCountFromDate(replayOriginalDate));
+    }
+    return getPuzzleNumberString(todayPlayCount);
+  }, [todayDateStr, todayPlayCount, isReplay, replayOriginalDate]);
+
+  const displayDateText = useMemo(() => {
+    if (!todayDateStr) return '';
+    if (isReplay && replayOriginalDate) {
+      return getDisplayDate(getPlayCountFromDate(replayOriginalDate));
+    }
+    return displayDate;
+  }, [todayDateStr, displayDate, isReplay, replayOriginalDate]);
 
   return (
     <View
@@ -276,7 +349,11 @@ export function HomeScreen({ navigation }: Props) {
             }
           ]}
         >
-          Get 6 chances to guess a 5-letter word.
+          {isCompetitionComplete
+            ? "Congratulations. You've guessed all plays correctly."
+            : isReplay && replayOriginalDate
+              ? `Retrying puzzle from ${getDisplayDate(getPlayCountFromDate(replayOriginalDate))}`
+              : "Get 6 chances to guess a 5-letter word."}
         </Text>
 
         <Pressable
@@ -290,7 +367,7 @@ export function HomeScreen({ navigation }: Props) {
           disabled={!gameStarted || hasPlayed}
         >
           <Text style={[styles.playButtonText, (!gameStarted || hasPlayed) && styles.playButtonTextDisabled]}>
-            {!gameStarted ? 'Coming Feb 15' : isReplay ? 'Replay' : hasPlayed ? 'Already Played' : 'Play'}
+            {!gameStarted ? 'Coming Feb 15' : isCompetitionComplete ? 'Completed' : isReplay ? 'Replay' : hasPlayed ? 'Already Played' : 'Play'}
           </Text>
         </Pressable>
 
@@ -303,11 +380,13 @@ export function HomeScreen({ navigation }: Props) {
           </Pressable>
         )}
 
-        <View style={styles.meta}>
-          <Text style={[styles.metaPrimary, { fontSize: responsive.metaSize }]}>{displayDate}</Text>
-          <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
-          <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
-        </View>
+        {isCompetitionComplete ? null : (
+          <View style={styles.meta}>
+            <Text style={[styles.metaPrimary, { fontSize: responsive.metaSize }]}>{displayDateText}</Text>
+            <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
+            <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
+          </View>
+        )}
 
         {/* Dev Mode: Fake Date Indicator */}
         {isFakeDateEnabled() && (

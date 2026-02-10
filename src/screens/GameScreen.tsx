@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
-import { getPlayCount, saveGuessesForDate } from '../utils/stats';
+import { getPlayCount, saveGuessesForDate, getReplayLink } from '../utils/stats';
 import { getDailyWord, getDailyWordForDate, getPlayCountFromDate, getTodayDateString } from '../utils/dailyWord';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
@@ -58,26 +58,25 @@ export function GameScreen({ navigation, route }: Props) {
 
   // Load play count and set solution word
   useEffect(() => {
-    const dateToPlay = route.params?.dateToPlay;
-    
-    if (dateToPlay) {
-      // Playing a specific date from calendar or explicit date
-      const dailyWord = getDailyWordForDate(dateToPlay);
+    const loadGameData = async () => {
+      const dateToPlay = route.params?.dateToPlay || getTodayDateString();
+
+      // Check for replay mapping (Requirement 2b)
+      const linkedOriginalDate = await getReplayLink(dateToPlay);
+      const effectiveDate = linkedOriginalDate || dateToPlay;
+
+      const dailyWord = getDailyWordForDate(effectiveDate);
       const calculatedPlayCount = getPlayCountFromDate(dateToPlay);
+
       setPlayCount(calculatedPlayCount);
-      setSolution(dailyWord.word);
+      if (dailyWord) {
+        setSolution(dailyWord.word);
+      }
       setGameDate(dateToPlay);
       setIsLoading(false);
-    } else {
-      // No date specified - use today's date
-      const todayStr = getTodayDateString();
-      const dailyWord = getDailyWordForDate(todayStr);
-      const calculatedPlayCount = getPlayCountFromDate(todayStr);
-      setPlayCount(calculatedPlayCount);
-      setSolution(dailyWord.word);
-      setGameDate(todayStr);
-      setIsLoading(false);
-    }
+    };
+
+    loadGameData();
   }, [route.params?.dateToPlay]);
 
   const paddingH = Math.max(16, Math.min(24, width * 0.05));
@@ -334,86 +333,86 @@ export function GameScreen({ navigation, route }: Props) {
           }
         ]}
       >
-      <View style={styles.grid}>
-        {allRows.map((row: string, r: number) => {
-          const rowLetters = row.padEnd(WORD_LENGTH, ' ').slice(0, WORD_LENGTH).split('');
-          const rowEval = r < guesses.length ? evaluations[r] : undefined;
+        <View style={styles.grid}>
+          {allRows.map((row: string, r: number) => {
+            const rowLetters = row.padEnd(WORD_LENGTH, ' ').slice(0, WORD_LENGTH).split('');
+            const rowEval = r < guesses.length ? evaluations[r] : undefined;
 
-          return (
-            <View key={r} style={styles.row}>
-              {rowLetters.map((ch: string, c: number) => {
-                const tileState: TileState = rowEval ? rowEval[c] : ch === ' ' ? 'empty' : 'empty';
-                const isFilled = tileState === 'correct' || tileState === 'present' || tileState === 'absent';
+            return (
+              <View key={r} style={styles.row}>
+                {rowLetters.map((ch: string, c: number) => {
+                  const tileState: TileState = rowEval ? rowEval[c] : ch === ' ' ? 'empty' : 'empty';
+                  const isFilled = tileState === 'correct' || tileState === 'present' || tileState === 'absent';
+                  return (
+                    <View
+                      key={c}
+                      style={[
+                        styles.tileBase,
+                        tileStyle,
+                        tileState === 'correct'
+                          ? styles.tileCorrect
+                          : tileState === 'present'
+                            ? styles.tilePresent
+                            : tileState === 'absent'
+                              ? styles.tileAbsent
+                              : styles.tileEmpty
+                      ]}
+                    >
+                      <Text style={[styles.tileText, { fontSize: tileFontSize }, isFilled && styles.tileTextFilled]}>{ch === ' ' ? '' : ch}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.keyboard}>
+          {KEYBOARD_ROWS.map((row, i) => (
+            <View key={i} style={styles.keyboardRow}>
+              {row.map((key) => {
+                const state = keyStates[key] ?? 'unused';
+                const isWide = key === '⌫';
+                const isSpecial = state === 'correct' || state === 'present' || state === 'absent';
                 return (
-                  <View
-                    key={c}
-                    style={[
-                      styles.tileBase,
-                      tileStyle,
-                      tileState === 'correct'
-                        ? styles.tileCorrect
-                        : tileState === 'present'
-                          ? styles.tilePresent
-                          : tileState === 'absent'
-                            ? styles.tileAbsent
-                            : styles.tileEmpty
+                  <Pressable
+                    key={key}
+                    onPress={() => onKeyPress(key)}
+                    style={({ pressed }) => [
+                      styles.keyBase,
+                      keyStyle,
+                      isWide && keyWideStyle,
+                      state === 'correct'
+                        ? styles.keyCorrect
+                        : state === 'present'
+                          ? styles.keyPresent
+                          : state === 'absent'
+                            ? styles.keyAbsent
+                            : styles.keyUnused,
+                      pressed && { opacity: 0.8 }
                     ]}
                   >
-                    <Text style={[styles.tileText, { fontSize: tileFontSize }, isFilled && styles.tileTextFilled]}>{ch === ' ' ? '' : ch}</Text>
-                  </View>
+                    <Text style={[styles.keyText, { fontSize: keyFontSize }, isSpecial && styles.keyTextSpecial]}>{key}</Text>
+                  </Pressable>
                 );
               })}
             </View>
-          );
-        })}
-      </View>
+          ))}
+        </View>
 
-      <View style={styles.keyboard}>
-        {KEYBOARD_ROWS.map((row, i) => (
-          <View key={i} style={styles.keyboardRow}>
-            {row.map((key) => {
-              const state = keyStates[key] ?? 'unused';
-              const isWide = key === '⌫';
-              const isSpecial = state === 'correct' || state === 'present' || state === 'absent';
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => onKeyPress(key)}
-                  style={({ pressed }) => [
-                    styles.keyBase,
-                    keyStyle,
-                    isWide && keyWideStyle,
-                    state === 'correct'
-                      ? styles.keyCorrect
-                      : state === 'present'
-                        ? styles.keyPresent
-                        : state === 'absent'
-                          ? styles.keyAbsent
-                          : styles.keyUnused,
-                    pressed && { opacity: 0.8 }
-                  ]}
-                >
-                  <Text style={[styles.keyText, { fontSize: keyFontSize }, isSpecial && styles.keyTextSpecial]}>{key}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-
-      <Pressable
-        onPress={submitGuess}
-        style={({ pressed }) => [
-          styles.submitButton,
-          (current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES) && styles.submitButtonDisabled,
-          pressed && current.length === WORD_LENGTH && styles.submitButtonPressed
-        ]}
-        disabled={current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES}
-        accessibilityLabel="Submit word"
-        accessibilityRole="button"
-      >
-        <Text style={styles.submitButtonText}>SUBMIT WORD</Text>
-      </Pressable>
+        <Pressable
+          onPress={submitGuess}
+          style={({ pressed }) => [
+            styles.submitButton,
+            (current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES) && styles.submitButtonDisabled,
+            pressed && current.length === WORD_LENGTH && styles.submitButtonPressed
+          ]}
+          disabled={current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES}
+          accessibilityLabel="Submit word"
+          accessibilityRole="button"
+        >
+          <Text style={styles.submitButtonText}>SUBMIT WORD</Text>
+        </Pressable>
       </Animated.View>
 
       <Modal

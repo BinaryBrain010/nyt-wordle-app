@@ -8,7 +8,7 @@
 // ==========================================
 // 👇 CHANGE THIS VALUE TO TEST DIFFERENT DAYS
 // ==========================================
-const FAKE_DATE: string | null = '2026-02-16T12:00:00';  // Set to null for real date
+const FAKE_DATE: string | null = '2026-02-21T12:00:00';  // Set to null for real date
 // ==========================================
 
 /**

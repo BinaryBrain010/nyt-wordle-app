@@ -5,6 +5,8 @@ const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
 const DAILY_WORDS = ['LMFAO', 'GUCCI', 'SLEEP', 'YANNO', 'WANGE'];
 const PUZZLE_NUMBERS = [321, 819, 902, 918, 1002];
 
+export const TOTAL_ORIGINAL_DAYS = DAILY_WORDS.length; // 5 days
+
 export type DailyWordInfo = {
   word: string;
   puzzleNumber: number;
@@ -12,14 +14,15 @@ export type DailyWordInfo = {
   dayIndex: number;
 };
 
-/**
- * Get the daily word and puzzle number based on play count
- * Play count 0 = first day (Feb 15), play count 1 = second day (Feb 16), etc.
- * The cycle loops every 5 days
- */
-export function getDailyWord(playCount: number): DailyWordInfo {
-  // Calculate which day in the cycle (0-4, then loops)
-  const dayIndex = playCount % DAILY_WORDS.length;
+export function getDailyWord(playCount: number): DailyWordInfo | null {
+  // If beyond the original 5 days, we don't return a standard word automatically
+  // The system should use findFirstIncompleteDate instead
+  if (playCount >= TOTAL_ORIGINAL_DAYS) {
+    return null;
+  }
+
+  // Calculate which day in the cycle
+  const dayIndex = playCount;
 
   // Get the word and puzzle number for this day
   const word = DAILY_WORDS[dayIndex];
@@ -38,18 +41,36 @@ export function getDailyWord(playCount: number): DailyWordInfo {
 }
 
 /**
+ * Get the date string for a specific play count (0-indexed offset from START_DATE)
+ */
+export function getDateStrFromOffset(offset: number): string {
+  const d = new Date(START_DATE);
+  d.setDate(d.getDate() + offset);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Get the display date string for a given play count
  */
 export function getDisplayDate(playCount: number): string {
-  const { date } = getDailyWord(playCount);
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const info = getDailyWord(playCount);
+  if (!info) {
+    const date = new Date(START_DATE);
+    date.setDate(date.getDate() + playCount);
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  }
+  return info.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 /**
  * Get the puzzle number string formatted as "No. 0321"
  */
 export function getPuzzleNumberString(playCount: number): string {
-  const { puzzleNumber } = getDailyWord(playCount);
+  const info = getDailyWord(playCount);
+  const puzzleNumber = info ? info.puzzleNumber : 1000 + playCount; // Use a fallback for replay days if needed
   return `No. ${String(puzzleNumber).padStart(4, '0')}`;
 }
 
@@ -77,7 +98,7 @@ export function getPlayCountFromDate(dateStr: string): number {
 /**
  * Get the daily word and puzzle info for a specific date
  */
-export function getDailyWordForDate(dateStr: string): DailyWordInfo {
+export function getDailyWordForDate(dateStr: string): DailyWordInfo | null {
   const playCount = getPlayCountFromDate(dateStr);
   return getDailyWord(playCount);
 }
@@ -95,7 +116,17 @@ export function getTodayDateString(): string {
  */
 export function getTodayDailyWord(): DailyWordInfo {
   const todayStr = getTodayDateString();
-  return getDailyWordForDate(todayStr);
+  const info = getDailyWordForDate(todayStr);
+  if (!info) {
+    // This shouldn't happen if called correctly, but we need to satisfy TS
+    return {
+      word: '',
+      puzzleNumber: 0,
+      date: new Date(),
+      dayIndex: -1
+    };
+  }
+  return info;
 }
 
 /**

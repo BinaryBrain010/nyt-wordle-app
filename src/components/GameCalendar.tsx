@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
-import { CalendarHistory, getCalendarHistory, canReplayLostGame } from '../utils/stats';
+import { CalendarHistory, getCalendarHistory, canReplayLostGame, getReplayLink } from '../utils/stats';
+import { getPlayCountFromDate, getDailyWordForDate } from '../utils/dailyWord';
 import { getCurrentDate } from '../utils/fakeDate';
 
 const START_DATE = new Date(2026, 1, 15); // Feb 15, 2026 (month is 0-indexed)
@@ -32,6 +33,7 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
   const [history, setHistory] = useState<CalendarHistory>({});
   const [currentDate, setCurrentDate] = useState(new Date());
   const [replayableDates, setReplayableDates] = useState<Set<string>>(new Set());
+  const [replayLinks, setReplayLinks] = useState<Record<string, string>>({});
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -46,6 +48,11 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
 
     // Check which lost games are replayable
     const replayable = new Set<string>();
+    const links: Record<string, string> = {};
+
+    // Get today's info to check range
+    const today = getCurrentDate();
+
     for (const [date, result] of Object.entries(data)) {
       if (result === 'lose') {
         const { canReplay } = await canReplayLostGame(date);
@@ -53,8 +60,17 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
           replayable.add(date);
         }
       }
+
+      // Also check if this date has a replay link
+      const link = await getReplayLink(date);
+      if (link) links[date] = link;
     }
+
+    // Proactively check upcoming dates for links too (in case they haven't been in history yet)
+    // Or we can just rely on them being in history once they are 'assigned'
+
     setReplayableDates(replayable);
+    setReplayLinks(links);
   };
 
   const goToPrevMonth = () => {
@@ -182,11 +198,23 @@ export function GameCalendar({ onDatePress }: GameCalendarProps = {}) {
               const startDateNormalized = new Date(START_DATE);
               startDateNormalized.setHours(0, 0, 0, 0);
               const isBeforeStart = currentDate < startDateNormalized;
+              const playCount = getPlayCountFromDate(dateStr);
+              const originalDate = replayLinks[dateStr];
               const isPastOrToday = !isFuture && !isBeforeStart;
               const hasPlayed = !!result;
-              const isReplayable = result === 'lose' && replayableDates.has(dateStr);
-              const isLocked = result === 'lose' && !replayableDates.has(dateStr);
-              const isMissed = !isFuture && !isBeforeStart && !isToday && !hasPlayed;
+
+              let isReplayable = result === 'lose' && replayableDates.has(dateStr);
+
+              // Logic for showing replay status on 20th+ (Requirement 2b)
+              if (playCount >= 5 && originalDate) {
+                const originalResult = history[originalDate];
+                if (!hasPlayed && originalResult === 'lose') {
+                  isReplayable = true;
+                }
+              }
+
+              const isLocked = result === 'lose' && (playCount < 5 ? !replayableDates.has(dateStr) : (isToday ? !replayableDates.has(dateStr) : true));
+              const isMissed = !isFuture && !isBeforeStart && !isToday && !hasPlayed && playCount < 5;
 
               return (
                 <Pressable

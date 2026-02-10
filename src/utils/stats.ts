@@ -15,6 +15,12 @@ export type CalendarHistory = {
   [date: string]: GameResult; // date format: 'YYYY-MM-DD'
 };
 
+export type CompetitionStatus = {
+  isCompleted: boolean;
+  incompleteIndices: number[]; // Index 0-4
+  firstIncompleteOffset: number | null;
+};
+
 /**
  * Get storage keys for the current user
  * Throws error if no user is set
@@ -85,6 +91,20 @@ export async function updateStatsAfterGame(
   // Save to calendar history
   const date = gameDate || getTodayString();
   await saveGameToHistory(date, outcome);
+
+  // Requirement 2b: If this is a replay date (Feb 20+), update the original date's result too
+  const originalDate = await getReplayLink(date);
+  if (originalDate) {
+    if (outcome === 'win') {
+      // Both show green
+      await saveGameToHistory(originalDate, 'win');
+    } else {
+      // Original remains yellow (lose/replayable), but the replay date (today) is locked red
+      // We don't need to do anything to originalDate since it's already 'lose' or missed
+      // BUT we must ensure the lock mechanism applies to the REAL date (today)
+      await saveLostGameTimestamp(date);
+    }
+  }
 
   return {
     played: playedCount,
@@ -275,4 +295,52 @@ export async function canReplayLostGame(date: string): Promise<{ canReplay: bool
   } catch {
     return { canReplay: true };
   }
+}
+export async function getCompetitionStatus(): Promise<CompetitionStatus> {
+  const history = await getCalendarHistory();
+  const incompleteIndices: number[] = [];
+
+  const { TOTAL_ORIGINAL_DAYS, getDateStrFromOffset } = require('./dailyWord');
+
+  for (let i = 0; i < TOTAL_ORIGINAL_DAYS; i++) {
+    const dateStr = getDateStrFromOffset(i);
+    if (history[dateStr] !== 'win') {
+      incompleteIndices.push(i);
+    }
+  }
+
+  return {
+    isCompleted: incompleteIndices.length === 0,
+    incompleteIndices,
+    firstIncompleteOffset: incompleteIndices.length > 0 ? incompleteIndices[0] : null
+  };
+}
+
+/**
+ * Save a link between a replay date (e.g. Feb 20) and the original date (e.g. Feb 15)
+ */
+export async function saveReplayLink(replayDate: string, originalDate: string): Promise<void> {
+  const username = await getCurrentUser();
+  if (!username) return;
+  const key = `@wordle/replay_link_${username}_${replayDate}`;
+  await AsyncStorage.setItem(key, originalDate);
+}
+
+/**
+ * Get the original date associated with a replay date
+ */
+export async function getReplayLink(replayDate: string): Promise<string | null> {
+  const username = await getCurrentUser();
+  if (!username) return null;
+  const key = `@wordle/replay_link_${username}_${replayDate}`;
+  return await AsyncStorage.getItem(key);
+}
+
+/**
+ * Check if a date is within the original 5 days (Feb 15 - Feb 19)
+ */
+export function isOriginalDate(dateStr: string): boolean {
+  const { getPlayCountFromDate } = require('./dailyWord');
+  const playCount = getPlayCountFromDate(dateStr);
+  return playCount >= 0 && playCount < 5;
 }
