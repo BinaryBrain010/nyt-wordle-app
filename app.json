@@ -4,6 +4,7 @@
     "slug": "wordle-app",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./app-icon.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": ["**/*"],
     "ios": {
