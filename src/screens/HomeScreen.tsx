@@ -19,7 +19,7 @@ import { getCurrentUser, clearCurrentUser } from '../utils/users';
 import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, isDateAlreadyPlayed, getCompetitionStatus, saveReplayLink, getReplayLink, type GameStats } from '../utils/stats';
 import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate, TOTAL_ORIGINAL_DAYS, getDateStrFromOffset } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
-import { isFakeDateEnabled, getFakeDateValue } from '../utils/fakeDate';
+
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -82,7 +82,6 @@ export function HomeScreen({ navigation }: Props) {
   const [gameStarted, setGameStarted] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [lockedTimeRemaining, setLockedTimeRemaining] = useState(0);
-  const [refreshKey, setRefreshKey] = useState(0); // For forcing re-fetch in dev mode
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [isReplay, setIsReplay] = useState(false);
   const [isCompetitionComplete, setIsCompetitionComplete] = useState(false);
@@ -112,7 +111,6 @@ export function HomeScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[HOME] Refreshing game state... Key:', refreshKey);
       getCurrentUser().then(setCurrentUsername);
       getPlayCount().then((count) => {
         setPlayCount(count);
@@ -198,7 +196,7 @@ export function HomeScreen({ navigation }: Props) {
 
       // Check if game has started for the active date
       setGameStarted(hasGameStarted());
-    }, [refreshKey, selectedDateStr])
+    }, [selectedDateStr])
   );
 
   const handleSwitchUser = async () => {
@@ -385,22 +383,6 @@ export function HomeScreen({ navigation }: Props) {
             <Text style={[styles.metaPrimary, { fontSize: responsive.metaSize }]}>{displayDateText}</Text>
             <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
             <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
-          </View>
-        )}
-
-        {/* Dev Mode: Fake Date Indicator */}
-        {isFakeDateEnabled() && (
-          <View style={styles.devBanner}>
-            <Text style={styles.devBannerText}>🧪 DEV MODE: Fake Date</Text>
-            <Text style={styles.devBannerDate}>{getFakeDateValue()}</Text>
-            <Text style={styles.devBannerHint}>Edit src/utils/fakeDate.ts to change</Text>
-
-            <Pressable
-              style={styles.refreshButton}
-              onPress={() => setRefreshKey(prev => prev + 1)}
-            >
-              <Text style={styles.refreshButtonText}>🔄 Force Refresh</Text>
-            </Pressable>
           </View>
         )}
       </View>
@@ -1106,46 +1088,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700'
-  },
-  devBanner: {
-    marginTop: 24,
-    backgroundColor: '#FFF3CD',
-    borderWidth: 1,
-    borderColor: '#FFECB5',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center'
-  },
-  devBannerText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#856404',
-    marginBottom: 4
-  },
-  devBannerDate: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#664D03',
-    marginBottom: 4
-  },
-  devBannerHint: {
-    fontSize: 10,
-    color: '#997404',
-    fontStyle: 'italic'
-  },
-  refreshButton: {
-    marginTop: 10,
-    backgroundColor: colors.present,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.correct
-  },
-  refreshButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF'
   },
   backToTodayButton: {
     marginTop: -8,
