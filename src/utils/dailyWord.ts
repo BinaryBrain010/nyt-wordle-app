@@ -105,7 +105,6 @@ export function getDailyWordForDate(dateStr: string): DailyWordInfo | null {
 
 /**
  * Get today's date as a YYYY-MM-DD string
- * Uses the fake date system for testing
  */
 export function getTodayDateString(): string {
   return getTodayString();
@@ -131,10 +130,14 @@ export function getTodayDailyWord(): DailyWordInfo {
 
 /**
  * Check if a date is playable (not in the future and not before start date)
- * Uses the fake date system for testing
  */
 export function isDatePlayable(dateStr: string): boolean {
-  const date = new Date(dateStr);
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+
+  const date = new Date(year, month, day);
   const today = getCurrentDate();
   today.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
@@ -147,7 +150,6 @@ export function isDatePlayable(dateStr: string): boolean {
 
 /**
  * Check if the game has started (current date is on or after Feb 15, 2026)
- * Uses the fake date system for testing
  */
 export function hasGameStarted(): boolean {
   const today = getCurrentDate();

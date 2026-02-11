@@ -1,7 +1,8 @@
 /**
  * DATE UTILITIES
  * 
- * Provides consistent date handling for the application.
+ * Provides consistent real-time date handling for the application.
+ * All time calculations respect Pacific Time (PT) for consistency with NYT Wordle.
  */
 
 /**
@@ -36,8 +37,7 @@ export function getCurrentDate(): Date {
 }
 
 /**
- * Get today's date as YYYY-MM-DD string
- * Uses local time part to avoid timezone shifts when near midnight
+ * Get today's date as YYYY-MM-DD string in PT
  */
 export function getTodayString(): string {
     const d = getCurrentDate();
@@ -48,21 +48,23 @@ export function getTodayString(): string {
 }
 
 /**
- * Get current timestamp (for lock mechanism)
+ * Get current timestamp in PT (for lock mechanism)
  */
 export function getCurrentTimestamp(): number {
     return getCurrentDate().getTime();
 }
 
 /**
- * Check if the fake date system is enabled (always false in production)
+ * Provides a production-safe version of isFakeDateEnabled
+ * (Always returns false)
  */
 export function isFakeDateEnabled(): boolean {
     return false;
 }
 
 /**
- * Get the fake date value (always null in production)
+ * Provides a production-safe version of getFakeDateValue
+ * (Always returns null)
  */
 export function getFakeDateValue(): string | null {
     return null;
