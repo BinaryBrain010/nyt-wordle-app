@@ -125,52 +125,53 @@ export function HomeScreen({ navigation }: Props) {
         const playCountNum = getPlayCountFromDate(activeDateStr);
         setTodayPlayCount(playCountNum);
 
-        // Check competition status for Feb 20+
+        // ALWAYS check competition status (Issue 1: Masterpiece should show immediately)
+        const status = await getCompetitionStatus();
+        if (status.isCompleted) {
+          setIsCompetitionComplete(true);
+          setHasPlayed(true); // Disable Play button if all complete
+          setIsReplay(false);
+          setReplayOriginalDate(null);
+          return;
+        }
+
+        // If not completed, proceed with standard logic
         if (playCountNum >= TOTAL_ORIGINAL_DAYS) {
-          const status = await getCompetitionStatus();
+          // Requirement 2b: Some lost -> Replay them
+          setIsCompetitionComplete(false);
 
-          if (status.isCompleted) {
-            // Requirement 2a: All won -> Congratulations
-            setIsCompetitionComplete(true);
-            setHasPlayed(true); // Disable Play button
-            setIsReplay(false);
-            setReplayOriginalDate(null);
-            return;
-          } else {
-            // Requirement 2b: Some lost -> Replay them
-            setIsCompetitionComplete(false);
+          // If it's today (not a selected history date), assign the first incomplete
+          // If it's a history date, we should retrieve what was linked to it
+          let targetDate = await getReplayLink(activeDateStr);
 
-            // If it's today (not a selected history date), assign the first incomplete
-            // If it's a history date, we should retrieve what was linked to it
-            let targetDate = await getReplayLink(activeDateStr);
-
-            if (!targetDate && activeDateStr === realTodayStr) {
-              // New replay day! Assign first incomplete
-              targetDate = getDateStrFromOffset(status.firstIncompleteOffset!);
+          if (!targetDate && activeDateStr === realTodayStr) {
+            // New replay day! Assign first incomplete
+            if (status.firstIncompleteOffset !== null) {
+              targetDate = getDateStrFromOffset(status.firstIncompleteOffset);
               await saveReplayLink(activeDateStr, targetDate);
             }
+          }
 
-            if (targetDate) {
-              setReplayOriginalDate(targetDate);
-              // Check if today (the replay date) has already been played
-              const alreadyPlayedToday = await isDateAlreadyPlayed(activeDateStr);
-              const resultToday = await getResultForDate(activeDateStr);
+          if (targetDate) {
+            setReplayOriginalDate(targetDate);
+            // Check if today (the replay date) has already been played
+            const alreadyPlayedToday = await isDateAlreadyPlayed(activeDateStr);
+            const resultToday = await getResultForDate(activeDateStr);
 
-              if (alreadyPlayedToday && resultToday === 'lose') {
-                // Replay date is locked red for today
-                setHasPlayed(true);
-                setIsReplay(false);
-              } else if (alreadyPlayedToday && resultToday === 'win') {
-                // Replay successful!
-                setHasPlayed(true);
-                setIsReplay(false);
-              } else {
-                // Ready to play/replay
-                setHasPlayed(false);
-                setIsReplay(true);
-              }
-              return;
+            if (alreadyPlayedToday && resultToday === 'lose') {
+              // Replay date is locked red for today
+              setHasPlayed(true);
+              setIsReplay(false);
+            } else if (alreadyPlayedToday && resultToday === 'win') {
+              // Replay successful!
+              setHasPlayed(true);
+              setIsReplay(false);
+            } else {
+              // Ready to play/replay
+              setHasPlayed(false);
+              setIsReplay(true);
             }
+            return;
           }
         }
 
@@ -200,6 +201,25 @@ export function HomeScreen({ navigation }: Props) {
     }, [selectedDateStr])
   );
 
+  // Issue 3: Live countdown for locked modal
+  React.useEffect(() => {
+    let interval: any;
+    if (showLockedModal && selectedDateStr) {
+      interval = setInterval(async () => {
+        const { timeRemaining } = await canReplayLostGame(selectedDateStr);
+        if (timeRemaining !== undefined) {
+          setLockedTimeRemaining(timeRemaining);
+          if (timeRemaining <= 0) {
+            setShowLockedModal(false);
+            // Trigger a refresh of the play state
+            setSelectedDateStr(prev => prev);
+          }
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showLockedModal, selectedDateStr]);
+
   const handleSwitchUser = async () => {
     await clearCurrentUser();
     navigation.reset({ index: 0, routes: [{ name: 'Username' }] });
@@ -211,7 +231,7 @@ export function HomeScreen({ navigation }: Props) {
     const seconds = Math.floor((ms % (1000 * 60)) / 1000);
 
     if (hours > 0) {
-      return `${hours}h ${minutes}m`;
+      return `${hours}h ${minutes}m ${seconds}s`;
     } else if (minutes > 0) {
       return `${minutes}m ${seconds}s`;
     } else {
@@ -601,11 +621,12 @@ export function HomeScreen({ navigation }: Props) {
           <View style={styles.lockedModalContent}>
             <Text style={styles.lockedModalTitle}>🔒 Puzzle Locked</Text>
             <Text style={styles.lockedModalMessage}>
-              You can retry this puzzle after midnight.
+              This puzzle is locked until the next calendar day.
             </Text>
             {lockedTimeRemaining !== null && (
               <Text style={styles.lockedModalTime}>
-                Time remaining: {formatTimeRemaining(lockedTimeRemaining)}
+                Available in:{"\n"}
+                {formatTimeRemaining(lockedTimeRemaining)}
               </Text>
             )}
             <Pressable

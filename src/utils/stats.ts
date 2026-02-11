@@ -92,17 +92,29 @@ export async function updateStatsAfterGame(
   const date = gameDate || getTodayString();
   await saveGameToHistory(date, outcome);
 
-  // Requirement 2b: If this is a replay date (Feb 20+), update the original date's result too
-  const originalDate = await getReplayLink(date);
-  if (originalDate) {
+  // Requirement 2b: Ensure synchronization between replay dates and original dates
+  const todayStr = getTodayString();
+
+  // 1. If we are playing a replay date (e.g. Feb 20), update the original date (e.g. Feb 15)
+  const linkedOriginalDate = await getReplayLink(date);
+  if (linkedOriginalDate) {
     if (outcome === 'win') {
-      // Both show green
-      await saveGameToHistory(originalDate, 'win');
+      await saveGameToHistory(linkedOriginalDate, 'win');
     } else {
-      // Original remains yellow (lose/replayable), but the replay date (today) is locked red
-      // We don't need to do anything to originalDate since it's already 'lose' or missed
-      // BUT we must ensure the lock mechanism applies to the REAL date (today)
       await saveLostGameTimestamp(date);
+    }
+  }
+
+  // 2. If we are playing an original date (e.g. Feb 15) using the calendar, 
+  // and today (e.g. Feb 20) is supposed to be replaying that date, update today too
+  if (date !== todayStr) {
+    const todayTargetDate = await getReplayLink(todayStr);
+    if (todayTargetDate === date) {
+      if (outcome === 'win') {
+        await saveGameToHistory(todayStr, 'win');
+      } else {
+        await saveLostGameTimestamp(todayStr);
+      }
     }
   }
 
@@ -270,27 +282,35 @@ export async function canReplayLostGame(date: string): Promise<{ canReplay: bool
 
     // Get today's date (uses fake date if enabled)
     const now = getCurrentDate();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Create 'today' at 00:00:00 in current game time
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
     // Parse the timestamp of the last loss
     const lastAttemptTime = parseInt(timestampStr, 10);
     const lastAttempt = new Date(lastAttemptTime);
-    const lastAttemptDay = new Date(lastAttempt.getFullYear(), lastAttempt.getMonth(), lastAttempt.getDate());
+
+    // Create 'lastAttemptDay' at 00:00:00
+    const lastAttemptDay = new Date(lastAttempt.getFullYear(), lastAttempt.getMonth(), lastAttempt.getDate(), 0, 0, 0, 0);
 
     // Check if today is at least one day after the last attempt
-    const daysSinceLastAttempt = Math.round((today.getTime() - lastAttemptDay.getTime()) / (1000 * 60 * 60 * 24));
+    const diffMs = today.getTime() - lastAttemptDay.getTime();
 
-    if (daysSinceLastAttempt >= 1) {
+    if (diffMs >= 86400000) {
       // It's at least the next day since the last attempt, allow replay
       return { canReplay: true };
     } else {
       // Still the same day as the last attempt, calculate time until midnight
       const nextMidnight = new Date(today);
-      nextMidnight.setDate(nextMidnight.getDate() + 1);
+      nextMidnight.setDate(today.getDate() + 1);
       nextMidnight.setHours(0, 0, 0, 0);
 
       const timeRemaining = nextMidnight.getTime() - now.getTime();
-      return { canReplay: false, timeRemaining: Math.max(0, timeRemaining) };
+
+      // If timeRemaining is exactly 24 hours (86400000 ms), it means now is exactly at 00:00:00
+      // but the rounding or comparison logic hasn't flipped the day yet.
+      // We return a slightly positive value to avoid showing "24h 0m"
+      return { canReplay: false, timeRemaining: timeRemaining >= 86400000 ? 86399999 : Math.max(0, timeRemaining) };
     }
   } catch {
     return { canReplay: true };
