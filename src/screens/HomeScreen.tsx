@@ -125,7 +125,7 @@ export function HomeScreen({ navigation }: Props) {
         const playCountNum = getPlayCountFromDate(activeDateStr);
         setTodayPlayCount(playCountNum);
 
-        // ALWAYS check competition status (Issue 1: Masterpiece should show immediately)
+        // Check completion status and show celebration if all won
         const status = await getCompetitionStatus();
         if (status.isCompleted) {
           setIsCompetitionComplete(true);
@@ -201,7 +201,7 @@ export function HomeScreen({ navigation }: Props) {
     }, [selectedDateStr])
   );
 
-  // Issue 3: Live countdown for locked modal
+  // Handle the live countdown for the locked puzzle modal
   React.useEffect(() => {
     let interval: any;
     if (showLockedModal && selectedDateStr) {

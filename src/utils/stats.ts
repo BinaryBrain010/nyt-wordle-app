@@ -153,13 +153,12 @@ export async function saveGameToHistory(date: string, result: GameResult): Promi
 /**
  * Check if today's puzzle has been played
  * Returns true if the user has already played the puzzle for today's date
- * Uses the fake date system for testing
  */
 export async function hasPlayedCurrentPuzzle(): Promise<boolean> {
   try {
     const history = await getCalendarHistory();
 
-    // Get today's date (uses fake date if enabled)
+    // Get today's date
     const todayStr = getTodayString();
 
     // Check if today's date exists in history
@@ -228,10 +227,6 @@ export async function saveLostGameTimestamp(date: string): Promise<void> {
 
 /**
  * Check if a lost game can be replayed (must wait until next day/midnight)
- * With the fake date system, this compares the game date to "today" (which may be fake)
- */
-/**
- * Check if a specific date has already been played
  */
 export async function isDateAlreadyPlayed(date: string): Promise<boolean> {
   try {
@@ -280,7 +275,7 @@ export async function canReplayLostGame(date: string): Promise<{ canReplay: bool
       return { canReplay: true };
     }
 
-    // Get today's date (uses fake date if enabled)
+    // Get today's date
     const now = getCurrentDate();
 
     // Create 'today' at 00:00:00 in current game time
