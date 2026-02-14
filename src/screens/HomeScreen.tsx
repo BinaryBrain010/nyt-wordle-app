@@ -16,9 +16,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
 import { getCurrentUser, clearCurrentUser } from '../utils/users';
-import { getPlayCount, getFullStats, type GameStats } from '../utils/stats';
-import { getDisplayDate, getPuzzleNumberString } from '../utils/dailyWord';
+import { getPlayCount, getFullStats, hasPlayedCurrentPuzzle, getGuessesForDate, getResultForDate, canReplayLostGame, isDateAlreadyPlayed, getCompetitionStatus, saveReplayLink, getReplayLink, type GameStats } from '../utils/stats';
+import { getDisplayDate, getPuzzleNumberString, getDailyWordForDate, getTodayDateString, hasGameStarted, getPlayCountFromDate, TOTAL_ORIGINAL_DAYS, getDateStrFromOffset } from '../utils/dailyWord';
 import { GameCalendar } from '../components/GameCalendar';
+import { Confetti } from '../components/Confetti';
+
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -75,6 +77,16 @@ export function HomeScreen({ navigation }: Props) {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [statsOpenedFrom, setStatsOpenedFrom] = useState<'profile' | 'calendar'>('profile');
+  const [hasPlayed, setHasPlayed] = useState(false);
+  const [todayDateStr, setTodayDateStr] = useState('');
+  const [todayPlayCount, setTodayPlayCount] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [showLockedModal, setShowLockedModal] = useState(false);
+  const [lockedTimeRemaining, setLockedTimeRemaining] = useState(0);
+  const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
+  const [isReplay, setIsReplay] = useState(false);
+  const [isCompetitionComplete, setIsCompetitionComplete] = useState(false);
+  const [replayOriginalDate, setReplayOriginalDate] = useState<string | null>(null);
 
   const responsive = useMemo(() => {
     const isNarrow = width < 380;
@@ -104,16 +116,190 @@ export function HomeScreen({ navigation }: Props) {
       getPlayCount().then((count) => {
         setPlayCount(count);
       });
-    }, [])
+      const realTodayStr = getTodayDateString();
+      const activeDateStr = selectedDateStr || realTodayStr;
+
+      setTodayDateStr(activeDateStr);
+
+      const checkPlayState = async () => {
+        const playCountNum = getPlayCountFromDate(activeDateStr);
+        setTodayPlayCount(playCountNum);
+
+        // Check completion status and show celebration if all won
+        const status = await getCompetitionStatus();
+        if (status.isCompleted) {
+          setIsCompetitionComplete(true);
+          setHasPlayed(true); // Disable Play button if all complete
+          setIsReplay(false);
+          setReplayOriginalDate(null);
+          return;
+        }
+
+        // If not completed, proceed with standard logic
+        if (playCountNum >= TOTAL_ORIGINAL_DAYS) {
+          // Requirement 2b: Some lost -> Replay them
+          setIsCompetitionComplete(false);
+
+          // If it's today (not a selected history date), assign the first incomplete
+          // If it's a history date, we should retrieve what was linked to it
+          let targetDate = await getReplayLink(activeDateStr);
+
+          if (!targetDate && activeDateStr === realTodayStr) {
+            // New replay day! Assign first incomplete
+            if (status.firstIncompleteOffset !== null) {
+              targetDate = getDateStrFromOffset(status.firstIncompleteOffset);
+              await saveReplayLink(activeDateStr, targetDate);
+            }
+          }
+
+          if (targetDate) {
+            setReplayOriginalDate(targetDate);
+            // Check if today (the replay date) has already been played
+            const alreadyPlayedToday = await isDateAlreadyPlayed(activeDateStr);
+            const resultToday = await getResultForDate(activeDateStr);
+
+            if (alreadyPlayedToday && resultToday === 'lose') {
+              // Replay date is locked red for today
+              setHasPlayed(true);
+              setIsReplay(false);
+            } else if (alreadyPlayedToday && resultToday === 'win') {
+              // Replay successful!
+              setHasPlayed(true);
+              setIsReplay(false);
+            } else {
+              // Ready to play/replay
+              setHasPlayed(false);
+              setIsReplay(true);
+            }
+            return;
+          }
+        }
+
+        // Standard logic for days 0-4
+        setIsCompetitionComplete(false);
+        setReplayOriginalDate(null);
+        const alreadyPlayed = await isDateAlreadyPlayed(activeDateStr);
+        const result = await getResultForDate(activeDateStr);
+        let treatAsUnplayed = !alreadyPlayed;
+        let replaying = false;
+
+        if (alreadyPlayed && result === 'lose') {
+          const { canReplay } = await canReplayLostGame(activeDateStr);
+          if (replaying = canReplay) {
+            treatAsUnplayed = true; // Allow Play button to show
+          }
+        }
+
+        setHasPlayed(!treatAsUnplayed);
+        setIsReplay(replaying);
+      };
+
+      checkPlayState();
+
+      // Check if game has started for the active date
+      setGameStarted(hasGameStarted());
+    }, [selectedDateStr])
   );
+
+  // Handle the live countdown for the locked puzzle modal
+  React.useEffect(() => {
+    let interval: any;
+    if (showLockedModal && selectedDateStr) {
+      interval = setInterval(async () => {
+        const { timeRemaining } = await canReplayLostGame(selectedDateStr);
+        if (timeRemaining !== undefined) {
+          setLockedTimeRemaining(timeRemaining);
+          if (timeRemaining <= 0) {
+            setShowLockedModal(false);
+            // Trigger a refresh of the play state
+            setSelectedDateStr(prev => prev);
+          }
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showLockedModal, selectedDateStr]);
 
   const handleSwitchUser = async () => {
     await clearCurrentUser();
     navigation.reset({ index: 0, routes: [{ name: 'Username' }] });
   };
 
-  const displayDate = getDisplayDate(playCount);
-  const puzzleNumStr = getPuzzleNumberString(playCount);
+  const formatTimeRemaining = (ms: number): string => {
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
+  };
+
+  const handleDatePress = async (dateStr: string, hasPlayed: boolean) => {
+    setShowCalendarModal(false);
+
+    if (hasPlayed) {
+      // User has played this puzzle - check if they won or lost
+      const result = await getResultForDate(dateStr);
+
+      if (result === 'lose') {
+        // Lost game - check if it can be replayed
+        const { canReplay, timeRemaining } = await canReplayLostGame(dateStr);
+
+        if (canReplay) {
+          // Allow replay on HomeScreen
+          setSelectedDateStr(dateStr);
+        } else {
+          // Show locked message with time remaining
+          setLockedTimeRemaining(timeRemaining || 0);
+          setShowLockedModal(true);
+        }
+      } else {
+        // Won game - show the finished puzzle (locked)
+        const guesses = await getGuessesForDate(dateStr);
+
+        // Find effective date (handle replay dates Feb 20+)
+        const originalDateLink = await getReplayLink(dateStr);
+        const effectiveDate = originalDateLink || dateStr;
+        const dailyWord = getDailyWordForDate(effectiveDate);
+
+        if (guesses && dailyWord) {
+          navigation.navigate('FinishedPuzzle', {
+            outcome: 'win',
+            guessesUsed: guesses.length,
+            guesses,
+            solution: dailyWord.word
+          });
+        }
+      }
+    } else {
+      // User hasn't played this puzzle - let them play it on HomeScreen
+      setSelectedDateStr(dateStr);
+    }
+  };
+
+  // Display today's puzzle info
+  const displayDate = todayDateStr ? getDisplayDate(todayPlayCount) : '';
+  const puzzleNumStr = useMemo(() => {
+    if (!todayDateStr) return '';
+    // If we're replaying a specific original date, show its puzzle number
+    if (isReplay && replayOriginalDate) {
+      return getPuzzleNumberString(getPlayCountFromDate(replayOriginalDate));
+    }
+    return getPuzzleNumberString(todayPlayCount);
+  }, [todayDateStr, todayPlayCount, isReplay, replayOriginalDate]);
+
+  const displayDateText = useMemo(() => {
+    if (!todayDateStr) return '';
+    if (isReplay && replayOriginalDate) {
+      return getDisplayDate(getPlayCountFromDate(replayOriginalDate));
+    }
+    return displayDate;
+  }, [todayDateStr, displayDate, isReplay, replayOriginalDate]);
 
   return (
     <View
@@ -126,6 +312,7 @@ export function HomeScreen({ navigation }: Props) {
         }
       ]}
     >
+      {isCompetitionComplete && <Confetti />}
       {/* Top Left - Calendar Button */}
       <Pressable
         style={[
@@ -172,35 +359,59 @@ export function HomeScreen({ navigation }: Props) {
         <View style={styles.titleRow}>
           <Text style={[styles.title, { fontSize: responsive.titleSize }]}>Wordle</Text>
         </View>
-        <Text
+        <View
           style={[
-            styles.subtitle,
+            styles.subtitleContainer,
             {
-              fontSize: responsive.subtitleSize,
-              lineHeight: responsive.subtitleLineHeight,
               maxWidth: responsive.subtitleMaxWidth
             }
           ]}
         >
-          Get 6 chances to guess a 5-letter word.
-        </Text>
+          {isCompetitionComplete ? (
+            <View style={styles.completionContainer}>
+              <Text style={styles.completionTitle}>🏆 Masterpiece!</Text>
+              <Text style={styles.completionSub}>You've completed all Wordle puzzles.</Text>
+            </View>
+          ) : (
+            <Text style={[styles.subtitle, { fontSize: responsive.subtitleSize, lineHeight: responsive.subtitleLineHeight }]}>
+              {isReplay && replayOriginalDate
+                ? `Retrying puzzle from ${getDisplayDate(getPlayCountFromDate(replayOriginalDate))}`
+                : "Get 6 chances to guess a 5-letter word."}
+            </Text>
+          )}
+        </View>
 
         <Pressable
           style={({ pressed }) => [
             styles.playButton,
             { paddingVertical: responsive.playPaddingV, paddingHorizontal: responsive.playPaddingH },
-            pressed && styles.playButtonPressed
+            (!gameStarted || hasPlayed) && styles.playButtonDisabled,
+            pressed && gameStarted && !hasPlayed && styles.playButtonPressed
           ]}
-          onPress={() => navigation.navigate('Game')}
+          onPress={() => gameStarted && !hasPlayed && navigation.navigate('Game', { dateToPlay: todayDateStr })}
+          disabled={!gameStarted || hasPlayed}
         >
-          <Text style={styles.playButtonText}>Play</Text>
+          <Text style={[styles.playButtonText, (!gameStarted || hasPlayed) && styles.playButtonTextDisabled]}>
+            {!gameStarted ? 'Coming Feb 15' : isCompetitionComplete ? 'Completed' : isReplay ? 'Replay' : hasPlayed ? 'Already Played' : 'Play'}
+          </Text>
         </Pressable>
 
-        <View style={styles.meta}>
-          <Text style={[styles.metaPrimary, { fontSize: responsive.metaSize }]}>{displayDate}</Text>
-          <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
-          <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
-        </View>
+        {selectedDateStr && (
+          <Pressable
+            style={styles.backToTodayButton}
+            onPress={() => setSelectedDateStr(null)}
+          >
+            <Text style={styles.backToTodayText}>↩ Back to Today</Text>
+          </Pressable>
+        )}
+
+        {isCompetitionComplete ? null : (
+          <View style={styles.meta}>
+            <Text style={[styles.metaPrimary, { fontSize: responsive.metaSize }]}>{displayDateText}</Text>
+            <Text style={[styles.metaNumber, { fontSize: responsive.metaSize }]}>{puzzleNumStr}</Text>
+            <Text style={[styles.metaEditor, { fontSize: responsive.metaSize - 1 }]}>Edited by pg</Text>
+          </View>
+        )}
       </View>
 
       {/* Profile Modal */}
@@ -308,14 +519,14 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.closeIconText}>✕</Text>
               </Pressable>
             </View>
-            
-            <ScrollView 
+
+            <ScrollView
               style={styles.statsScrollView}
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
               {/* Calendar Section */}
-              <GameCalendar />
+              <GameCalendar onDatePress={handleDatePress} />
 
               {/* Stats Grid */}
               {stats && (
@@ -371,14 +582,14 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.closeIconText}>✕</Text>
               </Pressable>
             </View>
-            
-            <ScrollView 
+
+            <ScrollView
               style={styles.statsScrollView}
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              <GameCalendar />
-              
+              <GameCalendar onDatePress={handleDatePress} />
+
               <Pressable
                 style={({ pressed }) => [
                   styles.statsLinkButton,
@@ -395,6 +606,38 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.statsLinkText}>Stats →</Text>
               </Pressable>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Locked Puzzle Modal */}
+      <Modal
+        visible={showLockedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLockedModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.lockedModalContent}>
+            <Text style={styles.lockedModalTitle}>🔒 Puzzle Locked</Text>
+            <Text style={styles.lockedModalMessage}>
+              This puzzle is locked until the next calendar day.
+            </Text>
+            {lockedTimeRemaining !== null && (
+              <Text style={styles.lockedModalTime}>
+                Available in:{"\n"}
+                {formatTimeRemaining(lockedTimeRemaining)}
+              </Text>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.lockedModalButton,
+                pressed && styles.closeButtonPressed
+              ]}
+              onPress={() => setShowLockedModal(false)}
+            >
+              <Text style={styles.lockedModalButtonText}>OK</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -433,15 +676,39 @@ const styles = StyleSheet.create({
     letterSpacing: -1.2,
     ...(Platform.OS === 'ios' && { fontVariant: ['tabular-nums'] })
   },
+  subtitleContainer: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
   subtitle: {
     fontSize: 18,
     lineHeight: 26,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 28,
     letterSpacing: 0.2,
     opacity: 0.92,
-    maxWidth: 280
+  },
+  completionContainer: {
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: '#F8F9FA',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    marginBottom: 20
+  },
+  completionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.correct,
+    marginBottom: 4,
+  },
+  completionSub: {
+    fontSize: 14,
+    color: colors.text,
+    opacity: 0.8,
+    textAlign: 'center'
   },
   playButton: {
     backgroundColor: colors.button,
@@ -464,11 +731,18 @@ const styles = StyleSheet.create({
   playButtonPressed: {
     opacity: 0.88
   },
+  playButtonDisabled: {
+    backgroundColor: colors.tileBorder,
+    opacity: 0.6
+  },
   playButtonText: {
     color: colors.buttonText,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5
+  },
+  playButtonTextDisabled: {
+    color: colors.mutedText
   },
   meta: {
     alignItems: 'center',
@@ -807,5 +1081,79 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5
+  },
+  lockedModalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 32,
+    marginHorizontal: 24,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16
+      },
+      android: { elevation: 12 }
+    })
+  },
+  lockedModalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center'
+  },
+  lockedModalMessage: {
+    fontSize: 16,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+    opacity: 0.8
+  },
+  lockedModalTime: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.absent,
+    textAlign: 'center',
+    marginBottom: 24
+  },
+  lockedModalButton: {
+    backgroundColor: colors.button,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 999,
+    minWidth: 120,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8
+      },
+      android: { elevation: 3 }
+    })
+  },
+  lockedModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  backToTodayButton: {
+    marginTop: -8,
+    marginBottom: 20,
+    backgroundColor: colors.tileEmpty,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+  },
+  backToTodayText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   }
 });

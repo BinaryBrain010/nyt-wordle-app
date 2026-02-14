@@ -18,20 +18,18 @@ import {
   getPlayCount,
   incrementPlayCount,
   updateStatsAfterGame,
+  saveGuessesForDate,
+  saveLostGameTimestamp,
+  isDateAlreadyPlayed,
+  updateReplayResult,
   type GameStats
 } from '../utils/stats';
 import { getDailyWord } from '../utils/dailyWord';
+import { Confetti } from '../components/Confetti';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
 const styles = StyleSheet.create({
-  confettiPiece: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 1,
-    top: 0
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background
@@ -133,77 +131,9 @@ const styles = StyleSheet.create({
   backButtonText: { color: colors.text, fontWeight: '600' }
 });
 
-function Confetti() {
-  const particles = useRef(
-    Array.from({ length: 40 }, () => ({
-      x: new Animated.Value(Math.random() * 300 - 150),
-      y: new Animated.Value(-20),
-      opacity: new Animated.Value(1),
-      rotate: new Animated.Value(0),
-      color: ['#6AAA64', '#E8A317', '#121213', '#D3D6DA'][Math.floor(Math.random() * 4)],
-      delay: Math.random() * 400,
-      duration: 2000 + Math.random() * 1000
-    }))
-  ).current;
-
-  useEffect(() => {
-    const animations = particles.map((p) =>
-      Animated.parallel([
-        Animated.timing(p.y, {
-          toValue: 600,
-          duration: p.duration,
-          useNativeDriver: true,
-          delay: p.delay
-        }),
-        Animated.timing(p.opacity, {
-          toValue: 0,
-          duration: p.duration,
-          useNativeDriver: true,
-          delay: p.delay + p.duration * 0.6
-        }),
-        Animated.timing(p.rotate, {
-          toValue: 1,
-          duration: p.duration,
-          useNativeDriver: true,
-          delay: p.delay
-        })
-      ])
-    );
-    Animated.stagger(30, animations).start();
-  }, [particles]);
-
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {particles.map((p, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            styles.confettiPiece,
-            {
-              backgroundColor: p.color,
-              left: '50%',
-              marginLeft: -4,
-              transform: [
-                { translateX: p.x },
-                { translateY: p.y },
-                {
-                  rotate: p.rotate.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '360deg']
-                  })
-                }
-              ],
-              opacity: p.opacity
-            }
-          ]}
-        />
-      ))}
-    </View>
-  );
-}
 
 export function ResultScreen({ navigation, route }: Props) {
-  const { outcome, guessesUsed, guesses, solution, fromFinishedPuzzle } = route.params;
+  const { outcome, guessesUsed, guesses, solution, fromFinishedPuzzle, gameDate: routeGameDate } = route.params;
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [stats, setStats] = useState<GameStats | null>(null);
@@ -217,16 +147,45 @@ export function ResultScreen({ navigation, route }: Props) {
     if (updated.current) return;
     updated.current = true;
     (async () => {
-      // Get the current play count to determine the game date
-      const currentPlayCount = await getPlayCount();
-      const dailyWord = getDailyWord(currentPlayCount);
-      const gameDate = dailyWord.date.toISOString().split('T')[0];
-      
-      const playedCount = await incrementPlayCount();
-      const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);
-      setStats(fullStats);
+      // Use gameDate from route if provided, otherwise calculate from current play count
+      let gameDate: string;
+      if (routeGameDate) {
+        gameDate = routeGameDate;
+      } else {
+        const currentPlayCount = await getPlayCount();
+        const dailyWord = getDailyWord(currentPlayCount);
+        if (!dailyWord) return;
+        const d = dailyWord.date;
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        gameDate = `${year}-${month}-${day}`;
+      }
+
+      // Check if this is a replay (date already exists in history)
+      const isReplay = await isDateAlreadyPlayed(gameDate);
+
+      if (isReplay) {
+        // This is a REPLAY - only update the result, not stats
+        // This prevents play count and win stats from being inflated
+        const currentStats = await updateReplayResult(gameDate, outcome, guesses ?? []);
+        setStats(currentStats);
+      } else {
+        // This is a FIRST-TIME play - update everything normally
+        // Save the guesses for this date
+        await saveGuessesForDate(gameDate, guesses ?? []);
+
+        // If the user lost, save the timestamp for replay lock
+        if (outcome === 'lose') {
+          await saveLostGameTimestamp(gameDate);
+        }
+
+        const playedCount = await incrementPlayCount();
+        const fullStats = await updateStatsAfterGame(outcome, playedCount, gameDate);
+        setStats(fullStats);
+      }
     })();
-  }, [outcome, fromFinishedPuzzle]);
+  }, [outcome, fromFinishedPuzzle, guesses, routeGameDate]);
 
   const title = useMemo(() => {
     if (outcome === 'win') return 'Congratulations!';
@@ -266,22 +225,13 @@ export function ResultScreen({ navigation, route }: Props) {
         <Pressable
           style={styles.backRow}
           onPress={() => {
-            if (outcome === 'lose') {
-              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-            } else {
-              navigation.replace('FinishedPuzzle', {
-                outcome,
-                guessesUsed,
-                guesses,
-                solution
-              });
-            }
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           }}
-          accessibilityLabel={outcome === 'lose' ? 'Back to home' : 'Back to puzzle'}
+          accessibilityLabel="Back to home"
           accessibilityRole="button"
         >
           <Text style={[styles.backText, { fontSize: width < 360 ? 14 : 16 }]}>
-            {outcome === 'lose' ? 'Back to home' : 'Back to puzzle'}
+            Back to home
           </Text>
           <Text style={styles.backX}>✕</Text>
         </Pressable>
@@ -330,20 +280,11 @@ export function ResultScreen({ navigation, route }: Props) {
         <Pressable
           style={styles.backButton}
           onPress={() => {
-            if (outcome === 'lose') {
-              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-            } else {
-              navigation.replace('FinishedPuzzle', {
-                outcome,
-                guessesUsed,
-                guesses,
-                solution
-              });
-            }
+            navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
           }}
         >
           <Text style={[styles.backButtonText, { fontSize: width < 360 ? 14 : 16 }]}>
-            {outcome === 'lose' ? 'Back to home' : 'Back to puzzle'}
+            Back to home
           </Text>
         </Pressable>
       </ScrollView>

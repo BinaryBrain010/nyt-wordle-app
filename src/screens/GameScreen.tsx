@@ -15,8 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
-import { getPlayCount } from '../utils/stats';
-import { getDailyWord } from '../utils/dailyWord';
+import { getPlayCount, saveGuessesForDate, getReplayLink } from '../utils/stats';
+import { getDailyWord, getDailyWordForDate, getPlayCountFromDate, getTodayDateString } from '../utils/dailyWord';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
@@ -41,33 +41,43 @@ const KEY_HEIGHT = 48;
 const KEY_MIN = 28;
 const KEY_WIDE_MIN = 44;
 
-export function GameScreen({ navigation }: Props) {
+export function GameScreen({ navigation, route }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [playCount, setPlayCount] = useState(0);
   const [solution, setSolution] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [gameDate, setGameDate] = useState<string>('');
 
   const [guesses, setGuesses] = useState<string[]>([]);
   const [current, setCurrent] = useState('');
   const [showInstructions, setShowInstructions] = useState(false);
   const [showLoseOverlay, setShowLoseOverlay] = useState(false);
+  const [showWinDelay, setShowWinDelay] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   // Load play count and set solution word
   useEffect(() => {
-    getPlayCount().then((count) => {
-      setPlayCount(count);
-      const dailyWord = getDailyWord(count);
-      setSolution(dailyWord.word);
+    const loadGameData = async () => {
+      const dateToPlay = route.params?.dateToPlay || getTodayDateString();
+
+      // Check for replay mapping (Requirement 2b)
+      const linkedOriginalDate = await getReplayLink(dateToPlay);
+      const effectiveDate = linkedOriginalDate || dateToPlay;
+
+      const dailyWord = getDailyWordForDate(effectiveDate);
+      const calculatedPlayCount = getPlayCountFromDate(dateToPlay);
+
+      setPlayCount(calculatedPlayCount);
+      if (dailyWord) {
+        setSolution(dailyWord.word);
+      }
+      setGameDate(dateToPlay);
       setIsLoading(false);
-    }).catch(() => {
-      // Fallback to first word if error
-      const dailyWord = getDailyWord(0);
-      setSolution(dailyWord.word);
-      setIsLoading(false);
-    });
-  }, []);
+    };
+
+    loadGameData();
+  }, [route.params?.dateToPlay]);
 
   const paddingH = Math.max(16, Math.min(24, width * 0.05));
   const tileSize = Math.min(
@@ -155,7 +165,7 @@ export function GameScreen({ navigation }: Props) {
 
   const onKeyPress = useCallback(
     (key: string) => {
-      if (guesses.length >= MAX_GUESSES) return;
+      if (guesses.length >= MAX_GUESSES || showWinDelay) return;
 
       if (key === 'ENTER') {
         if (current.length !== WORD_LENGTH) return;
@@ -167,12 +177,7 @@ export function GameScreen({ navigation }: Props) {
         if (!solution) return;
         const won = current.toUpperCase() === solution.toUpperCase();
         if (won) {
-          navigation.replace('Result', {
-            outcome: 'win',
-            guessesUsed: nextGuesses.length,
-            guesses: nextGuesses,
-            solution
-          });
+          setShowWinDelay(true);
           return;
         }
 
@@ -195,7 +200,7 @@ export function GameScreen({ navigation }: Props) {
 
       setCurrent((prev: string) => (prev + key).toUpperCase());
     },
-    [current, guesses, navigation, solution]
+    [current, guesses, navigation, solution, showWinDelay]
   );
 
   const tileStyle = useMemo(
@@ -238,11 +243,27 @@ export function GameScreen({ navigation }: Props) {
         outcome: 'lose',
         guessesUsed: MAX_GUESSES,
         guesses,
-        solution
+        solution: solution ?? undefined,
+        gameDate
       });
     }, 1600);
     return () => clearTimeout(t);
-  }, [showLoseOverlay, navigation, shakeAnim, guesses, solution]);
+  }, [showLoseOverlay, navigation, shakeAnim, guesses, solution, gameDate]);
+
+  // Handle win delay - show correct word in green for 5 seconds
+  useEffect(() => {
+    if (!showWinDelay) return;
+    const t = setTimeout(() => {
+      navigation.replace('Result', {
+        outcome: 'win',
+        guessesUsed: guesses.length,
+        guesses,
+        solution: solution ?? undefined,
+        gameDate
+      });
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [showWinDelay, navigation, guesses, solution, gameDate]);
 
   const shakeX = shakeAnim.interpolate({
     inputRange: [0, 1, 2, 3, 4],
@@ -312,86 +333,86 @@ export function GameScreen({ navigation }: Props) {
           }
         ]}
       >
-      <View style={styles.grid}>
-        {allRows.map((row: string, r: number) => {
-          const rowLetters = row.padEnd(WORD_LENGTH, ' ').slice(0, WORD_LENGTH).split('');
-          const rowEval = r < guesses.length ? evaluations[r] : undefined;
+        <View style={styles.grid}>
+          {allRows.map((row: string, r: number) => {
+            const rowLetters = row.padEnd(WORD_LENGTH, ' ').slice(0, WORD_LENGTH).split('');
+            const rowEval = r < guesses.length ? evaluations[r] : undefined;
 
-          return (
-            <View key={r} style={styles.row}>
-              {rowLetters.map((ch: string, c: number) => {
-                const tileState: TileState = rowEval ? rowEval[c] : ch === ' ' ? 'empty' : 'empty';
-                const isFilled = tileState === 'correct' || tileState === 'present' || tileState === 'absent';
+            return (
+              <View key={r} style={styles.row}>
+                {rowLetters.map((ch: string, c: number) => {
+                  const tileState: TileState = rowEval ? rowEval[c] : ch === ' ' ? 'empty' : 'empty';
+                  const isFilled = tileState === 'correct' || tileState === 'present' || tileState === 'absent';
+                  return (
+                    <View
+                      key={c}
+                      style={[
+                        styles.tileBase,
+                        tileStyle,
+                        tileState === 'correct'
+                          ? styles.tileCorrect
+                          : tileState === 'present'
+                            ? styles.tilePresent
+                            : tileState === 'absent'
+                              ? styles.tileAbsent
+                              : styles.tileEmpty
+                      ]}
+                    >
+                      <Text style={[styles.tileText, { fontSize: tileFontSize }, isFilled && styles.tileTextFilled]}>{ch === ' ' ? '' : ch}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.keyboard}>
+          {KEYBOARD_ROWS.map((row, i) => (
+            <View key={i} style={styles.keyboardRow}>
+              {row.map((key) => {
+                const state = keyStates[key] ?? 'unused';
+                const isWide = key === '⌫';
+                const isSpecial = state === 'correct' || state === 'present' || state === 'absent';
                 return (
-                  <View
-                    key={c}
-                    style={[
-                      styles.tileBase,
-                      tileStyle,
-                      tileState === 'correct'
-                        ? styles.tileCorrect
-                        : tileState === 'present'
-                          ? styles.tilePresent
-                          : tileState === 'absent'
-                            ? styles.tileAbsent
-                            : styles.tileEmpty
+                  <Pressable
+                    key={key}
+                    onPress={() => onKeyPress(key)}
+                    style={({ pressed }) => [
+                      styles.keyBase,
+                      keyStyle,
+                      isWide && keyWideStyle,
+                      state === 'correct'
+                        ? styles.keyCorrect
+                        : state === 'present'
+                          ? styles.keyPresent
+                          : state === 'absent'
+                            ? styles.keyAbsent
+                            : styles.keyUnused,
+                      pressed && { opacity: 0.8 }
                     ]}
                   >
-                    <Text style={[styles.tileText, { fontSize: tileFontSize }, isFilled && styles.tileTextFilled]}>{ch === ' ' ? '' : ch}</Text>
-                  </View>
+                    <Text style={[styles.keyText, { fontSize: keyFontSize }, isSpecial && styles.keyTextSpecial]}>{key}</Text>
+                  </Pressable>
                 );
               })}
             </View>
-          );
-        })}
-      </View>
+          ))}
+        </View>
 
-      <View style={styles.keyboard}>
-        {KEYBOARD_ROWS.map((row, i) => (
-          <View key={i} style={styles.keyboardRow}>
-            {row.map((key) => {
-              const state = keyStates[key] ?? 'unused';
-              const isWide = key === '⌫';
-              const isSpecial = state === 'correct' || state === 'present' || state === 'absent';
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => onKeyPress(key)}
-                  style={({ pressed }) => [
-                    styles.keyBase,
-                    keyStyle,
-                    isWide && keyWideStyle,
-                    state === 'correct'
-                      ? styles.keyCorrect
-                      : state === 'present'
-                        ? styles.keyPresent
-                        : state === 'absent'
-                          ? styles.keyAbsent
-                          : styles.keyUnused,
-                    pressed && { opacity: 0.8 }
-                  ]}
-                >
-                  <Text style={[styles.keyText, { fontSize: keyFontSize }, isSpecial && styles.keyTextSpecial]}>{key}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-
-      <Pressable
-        onPress={submitGuess}
-        style={({ pressed }) => [
-          styles.submitButton,
-          (current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES) && styles.submitButtonDisabled,
-          pressed && current.length === WORD_LENGTH && styles.submitButtonPressed
-        ]}
-        disabled={current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES}
-        accessibilityLabel="Submit word"
-        accessibilityRole="button"
-      >
-        <Text style={styles.submitButtonText}>SUBMIT WORD</Text>
-      </Pressable>
+        <Pressable
+          onPress={submitGuess}
+          style={({ pressed }) => [
+            styles.submitButton,
+            (current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES) && styles.submitButtonDisabled,
+            pressed && current.length === WORD_LENGTH && styles.submitButtonPressed
+          ]}
+          disabled={current.length !== WORD_LENGTH || guesses.length >= MAX_GUESSES}
+          accessibilityLabel="Submit word"
+          accessibilityRole="button"
+        >
+          <Text style={styles.submitButtonText}>SUBMIT WORD</Text>
+        </Pressable>
       </Animated.View>
 
       <Modal
