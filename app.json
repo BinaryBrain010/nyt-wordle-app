@@ -1,18 +1,40 @@
 {
-  "expo": {
-    "name": "Wordle",
-    "slug": "wordle-app",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./app-icon.png",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
-    "ios": {
-      "supportsTablet": false
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
     },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF"
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  },
+  "extra": {
+    "eas": {
+      "projectId": "e2e80bc3-03c5-4a7a-bd65-4c98af7eecd9"
+    }
+  },
+  "expo": {
+    "ios": {
+      "bundleIdentifier": "com.ahadnawaz585.wordleapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e2e80bc3-03c5-4a7a-bd65-4c98af7eecd9"
       }
     }
   }
