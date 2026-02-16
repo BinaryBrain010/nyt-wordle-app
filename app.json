@@ -20,12 +20,15 @@
   "submit": {
     "production": {}
   },
-  "extra": {
-    "eas": {
-      "projectId": "e2e80bc3-03c5-4a7a-bd65-4c98af7eecd9"
-    }
-  },
+  "extra": {},
   "expo": {
+    "icon": "./assets/icon.png",
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#608743"
+      }
+    },
     "ios": {
       "bundleIdentifier": "com.ahadnawaz585.wordleapp",
       "infoPlist": {
@@ -34,7 +37,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "e2e80bc3-03c5-4a7a-bd65-4c98af7eecd9"
+        "projectId": "00d90148-943a-407d-b9e9-c3f83da35eaf"
       }
     }
   }
